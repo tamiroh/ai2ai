@@ -1,0 +1,16 @@
+{
+    "name": "ai2ai",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "vite --host 127.0.0.1",
+        "build": "tsc --noEmit && vite build",
+        "preview": "vite preview --host 127.0.0.1"
+    },
+    "devDependencies": {
+        "@types/dom-chromium-ai": "^0.0.16",
+        "typescript": "^5.9.3",
+        "vite": "^7.1.12"
+    }
+}

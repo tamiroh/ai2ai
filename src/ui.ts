@@ -115,7 +115,7 @@ export function createUi(): Ui {
             item.innerHTML = `
                 <div class="message-meta">
                     <span>System</span>
-                    <span>Context reset</span>
+                    <span>Pause</span>
                 </div>
                 <p class="message-text"></p>
             `;

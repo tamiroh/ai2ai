@@ -161,6 +161,8 @@ export class ConversationController {
             "自然な雑談として、気軽で親しみやすい口調を保ってください。",
             "2〜4文で、相手の質問に答えることを優先してください。",
             "相手が出していない技術・AI・データ分析の話題を新しく始めないでください。",
+            "直近の会話に未完了の話題がある場合は、その話題を続けてください。",
+            "急に新しい近況を始めず、相手の最後の発言に直接返してください。",
             "直近の会話:",
             recentMessages || "まだ会話は始まっていません。",
         ].join("\n\n");
@@ -215,7 +217,7 @@ export class ConversationController {
 
         this.ui.setStatus("busy", "文脈整理中", "会話が重くならないよう AI モデルを作り直しています。");
         this.destroyModels();
-        this.ui.appendSystemMessage(`Turn ${this.turn} で AI モデルを作り直しました。直近の会話だけを引き継ぎます。`);
+        this.ui.appendSystemMessage(`Turn ${this.turn}。ふたりは少し深呼吸して、直近の話の余韻から会話を続けます。`);
         this.models = null;
         await this.ensureModels(settings);
     }

@@ -34,6 +34,7 @@ export type Ui = {
     updatePendingMessage(item: HTMLLIElement, text: string): void;
     finalizeMessage(item: HTMLLIElement, text: string, turn: number): void;
     markMessageStopped(item: HTMLLIElement): void;
+    appendSystemMessage(text: string): void;
     updateTurnCounter(turn: number): void;
     clearConversation(): void;
     getSettings(): ConversationSettings;
@@ -106,6 +107,21 @@ export function createUi(): Ui {
 
         markMessageStopped(item) {
             item.querySelector(".message-text")!.textContent = "停止しました。";
+        },
+
+        appendSystemMessage(text) {
+            const item = document.createElement("li");
+            item.className = "message system-message";
+            item.innerHTML = `
+                <div class="message-meta">
+                    <span>System</span>
+                    <span>Context reset</span>
+                </div>
+                <p class="message-text"></p>
+            `;
+            item.querySelector(".message-text")!.textContent = text;
+            dom.conversation.append(item);
+            scrollConversationToBottom(dom);
         },
 
         updateTurnCounter(turn) {

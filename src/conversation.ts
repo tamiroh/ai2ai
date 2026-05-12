@@ -10,6 +10,10 @@ const modelOptions: LanguageModelCreateCoreOptions = {
     expectedOutputs: [{ type: "text", languages: ["ja"] }],
 };
 
+const maxRecentMessages = 8;
+const maxTurnsBeforeModelReset = 16;
+const maxContextUsageRatio = 0.65;
+
 export class ConversationController {
     private models: Record<AgentName, LanguageModel> | null = null;
     private running = false;
@@ -63,6 +67,7 @@ export class ConversationController {
                 if (!completed || !this.running) {
                     break;
                 }
+                await this.resetModelsIfNeeded(settings);
                 await sleep(settings.delayMs);
             }
         } catch (error) {
@@ -88,6 +93,8 @@ export class ConversationController {
         this.turn = 0;
         this.ui.clearConversation();
         this.ui.updateTurnCounter(this.turn);
+        this.destroyModels();
+        this.models = null;
     }
 
     private async createModel(agentName: AgentName, persona: string): Promise<LanguageModel> {
@@ -103,6 +110,11 @@ export class ConversationController {
                         "返答は日本語で、短めの自然なおしゃべりにしてください。",
                         "相手の直前の発言をやさしく拾い、感想や小さな質問を添えて会話を続けてください。",
                         "討論や結論づけより、和気あいあいとした雑談の流れを優先してください。",
+                        "相手から質問されたら、次の返答ではまず短く答えてください。",
+                        "質問で終えるのは2回に1回までにしてください。",
+                        "AI、データ、解析、生成モデルの話題に偏らず、日常の話題も混ぜてください。",
+                        "絵文字は使っても1つまでにしてください。",
+                        "直前の会話と同じ表現や比喩を繰り返さないでください。",
                     ].join("\n"),
                 },
             ],
@@ -136,9 +148,9 @@ export class ConversationController {
     }
 
     private buildPrompt(agent: AgentName, otherAgent: AgentName, settings: ConversationSettings): string {
-        const recent = this.messages
-            .slice(-8)
-            .map((entry) => `Agent ${entry.agent}: ${entry.text}`)
+        const recentMessages = this.messages
+            .slice(-maxRecentMessages)
+            .map((message) => `Agent ${message.agent}: ${message.text}`)
             .join("\n");
 
         return [
@@ -146,8 +158,9 @@ export class ConversationController {
             `あなたは Agent ${agent} です。次は Agent ${otherAgent} に返答してください。`,
             `最大 ${settings.maxLength} 文字。`,
             "自然な雑談として、気軽で親しみやすい口調を保ってください。",
+            "2〜4文で、相手の質問に答えることを優先してください。",
             "直近の会話:",
-            recent || "まだ会話は始まっていません。",
+            recentMessages || "まだ会話は始まっていません。",
         ].join("\n\n");
     }
 
@@ -159,7 +172,9 @@ export class ConversationController {
         let output = "";
 
         try {
-            const stream = model.promptStreaming(this.buildPrompt(agent, otherAgent, settings), {
+            const prompt = this.buildPrompt(agent, otherAgent, settings);
+            this.logPrompt(agent, prompt);
+            const stream = model.promptStreaming(prompt, {
                 signal: this.generationAbortController.signal,
             });
             const reader = stream.getReader();
@@ -183,7 +198,63 @@ export class ConversationController {
         const cleanOutput = output.trim();
         this.ui.finalizeMessage(pending, cleanOutput || "（空の応答）", this.turn);
         this.messages.push({ agent, text: cleanOutput });
+        this.trimMessages();
         return true;
+    }
+
+    private async resetModelsIfNeeded(settings: ConversationSettings): Promise<void> {
+        if (!this.models) {
+            return;
+        }
+
+        if (!this.shouldResetModels()) {
+            return;
+        }
+
+        this.ui.setStatus("busy", "文脈整理中", "会話が重くならないよう AI モデルを作り直しています。");
+        this.destroyModels();
+        this.ui.appendSystemMessage(`Turn ${this.turn} で AI モデルを作り直しました。直近の会話だけを引き継ぎます。`);
+        this.models = null;
+        await this.ensureModels(settings);
+    }
+
+    private shouldResetModels(): boolean {
+        if (!this.models) {
+            return false;
+        }
+
+        if (this.turn > 0 && this.turn % maxTurnsBeforeModelReset === 0) {
+            return true;
+        }
+
+        return Object.values(this.models).some((model) => {
+            if (model.contextWindow <= 0) {
+                return false;
+            }
+            return model.contextUsage / model.contextWindow >= maxContextUsageRatio;
+        });
+    }
+
+    private destroyModels(): void {
+        if (!this.models) {
+            return;
+        }
+
+        for (const model of Object.values(this.models)) {
+            model.destroy();
+        }
+    }
+
+    private trimMessages(): void {
+        if (this.messages.length > maxRecentMessages) {
+            this.messages = this.messages.slice(-maxRecentMessages);
+        }
+    }
+
+    private logPrompt(agent: AgentName, prompt: string): void {
+        console.groupCollapsed(`[AI2AI] prompt turn=${this.turn} agent=${agent}`);
+        console.log(prompt);
+        console.groupEnd();
     }
 }
 

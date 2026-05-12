@@ -270,6 +270,22 @@ button.primary:hover:not(:disabled) {
     border-right: 5px solid var(--b);
 }
 
+.message.system-message {
+    align-self: center;
+    width: min(620px, 100%);
+    border-style: dashed;
+    background: #f7f6f1;
+    color: var(--muted);
+}
+
+.message.system-message .message-meta {
+    justify-content: center;
+}
+
+.message.system-message .message-text {
+    text-align: center;
+}
+
 .message-meta {
     display: flex;
     justify-content: space-between;

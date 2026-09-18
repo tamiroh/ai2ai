@@ -1,4 +1,276 @@
-import { useCallback, useEffect, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useReducer, useRef } from "preact/hooks";
+
+export type UseConversationResult = {
+    status: Status;
+    running: boolean;
+    messages: DisplayMessage[];
+    settings: ConversationSettings;
+    updateSettings: (patch: Partial<ConversationSettings>) => void;
+    toggle: () => void;
+    clear: () => void;
+};
+
+type Turn = {
+    number: number;
+    agent: AgentName;
+    settings: ConversationSettings;
+    prompt: string;
+    replaceModels: boolean;
+};
+
+type State = {
+    settings: ConversationSettings;
+    status: Status;
+    messages: DisplayMessage[];
+    history: PromptMessage[];
+    phase: "idle" | "preparing" | "generating" | "waiting";
+    turn: Turn | null;
+    nextTurn: number;
+};
+
+type Action =
+    | { type: "settings"; patch: Partial<ConversationSettings> }
+    | { type: "availability"; status: Status }
+    | { type: "toggle" }
+    | { type: "clear" }
+    | { type: "status"; turn: Turn; status: Status }
+    | { type: "reset"; turn: Turn }
+    | { type: "generating"; turn: Turn }
+    | { type: "chunk"; turn: Turn; text: string }
+    | { type: "completed"; turn: Turn; text: string }
+    | { type: "next"; turn: Turn }
+    | { type: "error"; turn: Turn; error: unknown };
+
+const initialStatus: Status = { kind: "ready", title: "", detail: "" };
+const conversationStatus: Status = {
+    kind: "ready", title: "会話中", detail: "停止するまで交互に発言し続けます。",
+};
+const initialState: State = {
+    settings: {
+        topic: "ふたりが、最近ちょっと楽しかったことや気になることを、ゆるく話し続ける。",
+        agentA: "穏やかで聞き上手。相手の話に乗りながら、日常の小さな発見を楽しむ。",
+        agentB: "明るく好奇心旺盛。少し冗談を交えつつ、会話をあたたかく広げる。",
+        delayMs: 1200,
+        maxLength: 220,
+    },
+    status: initialStatus,
+    messages: [],
+    history: [],
+    phase: "idle",
+    turn: null,
+    nextTurn: 1,
+};
+
+function beginTurn(state: State): State {
+    const agent: AgentName = state.nextTurn % 2 === 1 ? "A" : "B";
+    // Freeze the inputs for this turn; settings edits apply when the next turn begins.
+    return {
+        ...state,
+        phase: "preparing",
+        status: busyStatus("モデル準備中", "モデルの準備状況を確認しています。"),
+        turn: {
+            number: state.nextTurn,
+            agent,
+            settings: state.settings,
+            prompt: buildPrompt(agent, state.settings, state.history),
+            replaceModels: state.turn !== null && (
+                state.turn.settings.agentA !== state.settings.agentA ||
+                state.turn.settings.agentB !== state.settings.agentB
+            ),
+        },
+        nextTurn: state.nextTurn + 1,
+    };
+}
+
+function finish(state: State, status = initialStatus): State {
+    return {
+        ...state, phase: "idle", turn: null, status,
+        messages: state.messages.map((message) => message.kind === "agent" && message.pending
+            ? { ...message, pending: false, text: message.text || (status.kind === "error" ? "生成に失敗しました。" : "停止しました。") }
+            : message),
+    };
+}
+
+function reducer(state: State, action: Action): State {
+    // A cleared or stopped turn may still resolve after the next one starts.
+    if ("turn" in action && action.turn !== state.turn) {
+        return state;
+    }
+    switch (action.type) {
+        case "settings":
+            return { ...state, settings: { ...state.settings, ...action.patch } };
+        case "availability":
+            return state.nextTurn === 1 && !state.turn ? { ...state, status: action.status } : state;
+        case "toggle":
+            return state.turn ? finish(state) : beginTurn(state);
+        case "clear":
+            return { ...initialState, settings: state.settings };
+        case "status":
+            return state.phase === "preparing" ? { ...state, status: action.status } : state;
+        case "reset":
+            return {
+                ...state,
+                status: busyStatus("文脈整理中", "会話が重くならないよう AI モデルを作り直しています。"),
+                messages: [...state.messages, {
+                    id: -action.turn.number, kind: "system",
+                    text: `Turn ${action.turn.number - 1}。ふたりは少し深呼吸して、直近の話の余韻から会話を続けます。`,
+                }],
+            };
+        case "generating":
+            return {
+                ...state, phase: "generating", status: conversationStatus,
+                messages: [...state.messages, {
+                    id: action.turn.number, kind: "agent", agent: action.turn.agent,
+                    turn: action.turn.number, text: "", pending: true,
+                }],
+            };
+        case "chunk":
+        case "completed":
+            return {
+                ...state,
+                phase: action.type === "completed" ? "waiting" : state.phase,
+                messages: state.messages.map((message) => message.kind === "agent" && message.id === action.turn.number
+                    ? { ...message, text: action.text || (action.type === "completed" ? "(空の応答)" : ""), pending: action.type !== "completed" }
+                    : message),
+                history: action.type === "completed"
+                    ? [...state.history, { agent: action.turn.agent, text: action.text }].slice(-maxRecentMessages)
+                    : state.history,
+            };
+        case "next":
+            return beginTurn(state);
+        case "error":
+            return finish(state, { kind: "error", title: "実行エラー", detail: errorMessage(action.error) });
+    }
+}
+
+export function useConversation(): UseConversationResult {
+    const [state, dispatch] = useReducer(reducer, initialState);
+    const modelsRef = useRef<Models | null>(null);
+    const abortRef = useRef<AbortController | null>(null);
+    const availabilityAbortRef = useRef<AbortController | null>(null);
+    const { turn } = state;
+
+    const releaseModels = useCallback(() => {
+        destroyModels(modelsRef.current);
+        modelsRef.current = null;
+    }, []);
+
+    useEffect(() => {
+        const controller = new AbortController();
+        availabilityAbortRef.current = controller;
+        void checkAvailability().then(({ status }) => {
+            if (!controller.signal.aborted) dispatch({ type: "availability", status });
+        });
+        return () => {
+            controller.abort();
+            releaseModels();
+        };
+    }, [releaseModels]);
+
+    useEffect(() => {
+        if (!turn) {
+            return;
+        }
+        const controller = new AbortController();
+        const { signal } = controller;
+        abortRef.current = controller;
+
+        async function runTurn(currentTurn: Turn): Promise<void> {
+            try {
+                if (currentTurn.replaceModels) {
+                    releaseModels();
+                }
+                if (modelsRef.current && shouldResetModels(modelsRef.current, currentTurn.number - 1)) {
+                    releaseModels();
+                    dispatch({ type: "reset", turn: currentTurn });
+                }
+                if (!modelsRef.current) {
+                    const { availability, status } = await checkAvailability();
+                    signal.throwIfAborted();
+                    if (availability === "unavailable") {
+                        throw new Error(status.detail);
+                    }
+                    const models = await createModels(currentTurn.settings, signal, (status) => {
+                        dispatch({ type: "status", turn: currentTurn, status });
+                    });
+                    if (signal.aborted) {
+                        destroyModels(models);
+                        return;
+                    }
+                    modelsRef.current = models;
+                }
+                dispatch({ type: "generating", turn: currentTurn });
+                console.groupCollapsed(`[AI2AI] prompt turn=${currentTurn.number} agent=${currentTurn.agent}`);
+                console.log(currentTurn.prompt);
+                console.groupEnd();
+                const reader = modelsRef.current[currentTurn.agent]
+                    .promptStreaming(currentTurn.prompt, { signal }).getReader();
+                let output = "";
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        signal.throwIfAborted();
+                        if (done) {
+                            break;
+                        }
+                        output += value;
+                        dispatch({ type: "chunk", turn: currentTurn, text: output });
+                    }
+                } finally {
+                    reader.releaseLock();
+                }
+                dispatch({ type: "completed", turn: currentTurn, text: output.trim() });
+                await sleep(currentTurn.settings.delayMs, signal);
+                signal.throwIfAborted();
+                dispatch({ type: "next", turn: currentTurn });
+            } catch (error) {
+                if (!signal.aborted) {
+                    controller.abort();
+                    releaseModels();
+                    dispatch({ type: "error", turn: currentTurn, error });
+                }
+            }
+        }
+
+        void runTurn(turn);
+        return () => {
+            controller.abort();
+            if (abortRef.current === controller) {
+                abortRef.current = null;
+            }
+        };
+    }, [turn, releaseModels]);
+
+    const cancel = useCallback(() => {
+        availabilityAbortRef.current?.abort();
+        abortRef.current?.abort();
+        releaseModels();
+    }, [releaseModels]);
+
+    const toggle = useCallback(() => {
+        cancel();
+        dispatch({ type: "toggle" });
+    }, [cancel]);
+
+    const clear = useCallback(() => {
+        cancel();
+        dispatch({ type: "clear" });
+    }, [cancel]);
+
+    const updateSettings = useCallback((patch: Partial<ConversationSettings>) => {
+        dispatch({ type: "settings", patch });
+    }, []);
+
+    return {
+        status: state.status,
+        running: state.phase !== "idle",
+        messages: state.messages,
+        settings: state.settings,
+        updateSettings,
+        toggle,
+        clear,
+    };
+}
 
 export type AgentName = "A" | "B";
 export type StatusKind = "ready" | "busy" | "error";
@@ -48,82 +320,24 @@ const maxRecentMessages = 8;
 const maxTurnsBeforeModelReset = 16;
 const maxContextUsageRatio = 0.65;
 
-const initialSettings: ConversationSettings = {
-    topic: "ふたりが、最近ちょっと楽しかったことや気になることを、ゆるく話し続ける。",
-    agentA: "穏やかで聞き上手。相手の話に乗りながら、日常の小さな発見を楽しむ。",
-    agentB: "明るく好奇心旺盛。少し冗談を交えつつ、会話をあたたかく広げる。",
-    delayMs: 1200,
-    maxLength: 220,
-};
+type Models = Record<AgentName, LanguageModel>;
 
-const initialStatus: Status = { kind: "ready", title: "", detail: "" };
-
-export type UseConversationResult = {
-    status: Status;
-    running: boolean;
-    messages: DisplayMessage[];
-    settings: ConversationSettings;
-    updateSettings: (patch: Partial<ConversationSettings>) => void;
-    toggle: () => void;
-    clear: () => void;
-};
-
-export function useConversation(): UseConversationResult {
-    const [status, setStatus] = useState<Status>(initialStatus);
-    const [running, setRunning] = useState(false);
-    const [messages, setMessages] = useState<DisplayMessage[]>([]);
-    const [settings, setSettings] = useState<ConversationSettings>(initialSettings);
-
-    const settingsRef = useRef(settings);
-    settingsRef.current = settings;
-
-    const activeRef = useRef(false);
-    const runningRef = useRef(false);
-    const turnRef = useRef(0);
-    const modelsRef = useRef<Record<AgentName, LanguageModel> | null>(null);
-    const generationAbortControllerRef = useRef<AbortController | null>(null);
-    const promptHistoryRef = useRef<PromptMessage[]>([]);
-    const nextIdRef = useRef(0);
-
-    const setStatusValue = useCallback((kind: StatusKind, title: string, detail: string) => {
-        setStatus({ kind, title, detail });
-    }, []);
-
-    const checkAvailability = useCallback(async (): Promise<Availability> => {
-        if (!("LanguageModel" in globalThis)) {
-            setStatusValue(
-                "error",
-                "Prompt API なし",
-                "Chrome Prompt API に対応した Chrome で localhost から開いてください。",
-            );
-            return "unavailable";
-        }
-
-        try {
-            const availability = await LanguageModel.availability(modelOptions);
-            if (availability === "available") {
-                setStatusValue("ready", "利用可能", "Gemini Nano のローカルモデルで会話できます。");
-            } else if (availability === "downloadable") {
-                setStatusValue("ready", "ダウンロード可能", "開始ボタンでモデルの初回ダウンロードを始めます。");
-            } else if (availability === "downloading") {
-                setStatusValue("busy", "ダウンロード中", "モデルの準備が完了するまで待ってください。");
-            } else {
-                setStatusValue("error", "利用不可", "この端末または Chrome 設定では Prompt API を使えません。");
-            }
-            return availability;
-        } catch (error) {
-            setStatusValue("error", "確認失敗", error instanceof Error ? error.message : String(error));
-            return "unavailable";
-        }
-    }, [setStatusValue]);
-
-    useEffect(() => {
-        void checkAvailability();
-    }, [checkAvailability]);
-
-    const createModel = useCallback(async (agentName: AgentName, persona: string): Promise<LanguageModel> => {
-        return LanguageModel.create({
+async function createModels(
+    settings: ConversationSettings,
+    signal: AbortSignal,
+    onProgress: (status: Status) => void,
+): Promise<Models> {
+    const created = new Set<LanguageModel>();
+    const destroy = () => {
+        for (const model of created) model.destroy();
+        created.clear();
+    };
+    let failed = false;
+    signal.addEventListener("abort", destroy, { once: true });
+    const create = async (agentName: AgentName, persona: string): Promise<LanguageModel> => {
+        const model = await LanguageModel.create({
             ...modelOptions,
+            signal,
             initialPrompts: [
                 {
                     role: "system",
@@ -145,225 +359,100 @@ export function useConversation(): UseConversationResult {
             ],
             monitor: (monitor: CreateMonitor) => {
                 monitor.addEventListener("downloadprogress", (event) => {
-                    const percent = Math.round((event as ProgressEvent).loaded * 100);
-                    setStatusValue("busy", "モデルをダウンロード中", `${percent}% 完了`);
+                    if (!signal.aborted && !failed) {
+                        onProgress(busyStatus("モデルをダウンロード中", `${Math.round((event as ProgressEvent).loaded * 100)}% 完了`));
+                    }
                 });
             },
         });
-    }, [setStatusValue]);
-
-    const destroyModels = useCallback((): void => {
-        if (!modelsRef.current) {
-            return;
-        }
-        for (const model of Object.values(modelsRef.current)) {
+        if (signal.aborted || failed) {
             model.destroy();
+            throw new DOMException("Model creation cancelled", "AbortError");
         }
-    }, []);
-
-    const ensureModels = useCallback(async (): Promise<Record<AgentName, LanguageModel>> => {
-        if (modelsRef.current) {
-            return modelsRef.current;
-        }
-
-        const availability = await checkAvailability();
-        if (availability === "unavailable") {
-            throw new Error("Prompt API が利用できません。");
-        }
-
-        setStatusValue("busy", "モデル準備中", "2つの AI モデルを準備しています。");
-        const currentSettings = settingsRef.current;
-        const [agentA, agentB] = await Promise.all([
-            createModel("A", currentSettings.agentA),
-            createModel("B", currentSettings.agentB),
-        ]);
-        modelsRef.current = { A: agentA, B: agentB };
-        setStatusValue("ready", "会話準備完了", "停止するまで交互に発言し続けます。");
-        return modelsRef.current;
-    }, [checkAvailability, createModel, setStatusValue]);
-
-    const buildPrompt = useCallback((agent: AgentName, otherAgent: AgentName, currentSettings: ConversationSettings): string => {
-        const recentMessages = promptHistoryRef.current
-            .slice(-maxRecentMessages)
-            .map((message) => `Agent ${message.agent}: ${message.text}`)
-            .join("\n");
-
-        return [
-            `テーマ: ${currentSettings.topic}`,
-            `あなたは Agent ${agent} です。次は Agent ${otherAgent} に返答してください。`,
-            `最大 ${currentSettings.maxLength} 文字。`,
-            "自然な雑談として、気軽で親しみやすい口調を保ってください。",
-            "2〜4文で、相手の質問に答えることを優先してください。",
-            "相手が出していない技術・AI・データ分析の話題を新しく始めないでください。",
-            "直近の会話に未完了の話題がある場合は、その話題を続けてください。",
-            "急に新しい近況を始めず、相手の最後の発言に直接返してください。",
-            "直近の会話:",
-            recentMessages || "まだ会話は始まっていません。",
-        ].join("\n\n");
-    }, []);
-
-    const logPrompt = useCallback((agent: AgentName, currentTurn: number, prompt: string): void => {
-        console.groupCollapsed(`[AI2AI] prompt turn=${currentTurn} agent=${agent}`);
-        console.log(prompt);
-        console.groupEnd();
-    }, []);
-
-    const trimPromptHistory = useCallback((): void => {
-        if (promptHistoryRef.current.length > maxRecentMessages) {
-            promptHistoryRef.current = promptHistoryRef.current.slice(-maxRecentMessages);
-        }
-    }, []);
-
-    const updateMessage = useCallback((id: number, patch: Partial<AgentDisplayMessage>): void => {
-        setMessages((prev) =>
-            prev.map((message) => (message.kind === "agent" && message.id === id ? { ...message, ...patch } : message)),
-        );
-    }, []);
-
-    const generateTurn = useCallback(async (agent: AgentName, currentTurn: number, currentSettings: ConversationSettings): Promise<boolean> => {
-        const otherAgent: AgentName = agent === "A" ? "B" : "A";
-        const model = modelsRef.current![agent];
-        const abortController = new AbortController();
-        generationAbortControllerRef.current = abortController;
-
-        const id = nextIdRef.current++;
-        setMessages((prev) => [
-            ...prev,
-            { id, kind: "agent", agent, text: "", turn: currentTurn, pending: true },
-        ]);
-
-        let output = "";
-        try {
-            const prompt = buildPrompt(agent, otherAgent, currentSettings);
-            logPrompt(agent, currentTurn, prompt);
-            const stream = model.promptStreaming(prompt, { signal: abortController.signal });
-            const reader = stream.getReader();
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) {
-                    break;
-                }
-                output += value;
-                updateMessage(id, { text: output });
-            }
-        } catch (error) {
-            if (abortController.signal.aborted) {
-                updateMessage(id, { text: "停止しました。" });
-                return false;
-            }
-            throw error;
-        }
-
-        const cleanOutput = output.trim();
-        updateMessage(id, { text: cleanOutput || "(空の応答)", pending: false, turn: currentTurn });
-        promptHistoryRef.current = [...promptHistoryRef.current, { agent, text: cleanOutput }];
-        trimPromptHistory();
-        return true;
-    }, [buildPrompt, logPrompt, updateMessage, trimPromptHistory]);
-
-    const shouldResetModels = useCallback((currentTurn: number): boolean => {
-        if (!modelsRef.current) {
-            return false;
-        }
-
-        if (currentTurn > 0 && currentTurn % maxTurnsBeforeModelReset === 0) {
-            return true;
-        }
-
-        return Object.values(modelsRef.current).some((model) => {
-            if (model.contextWindow <= 0) {
-                return false;
-            }
-            return model.contextUsage / model.contextWindow >= maxContextUsageRatio;
-        });
-    }, []);
-
-    const resetModelsIfNeeded = useCallback(async (currentTurn: number): Promise<void> => {
-        if (!modelsRef.current || !shouldResetModels(currentTurn)) {
-            return;
-        }
-
-        setStatusValue("busy", "文脈整理中", "会話が重くならないよう AI モデルを作り直しています。");
-        destroyModels();
-        setMessages((prev) => [
-            ...prev,
-            {
-                id: nextIdRef.current++,
-                kind: "system",
-                text: `Turn ${currentTurn}。ふたりは少し深呼吸して、直近の話の余韻から会話を続けます。`,
-            },
-        ]);
-        modelsRef.current = null;
-        await ensureModels();
-    }, [destroyModels, ensureModels, setStatusValue, shouldResetModels]);
-
-    const start = useCallback(async (): Promise<void> => {
-        if (activeRef.current) {
-            return;
-        }
-        activeRef.current = true;
-        runningRef.current = true;
-        setRunning(true);
-        setStatusValue("busy", "モデル準備中", "モデルの準備状況を確認しています。");
-
-        try {
-            await ensureModels();
-            setStatusValue("ready", "会話中", "停止するまで交互に発言し続けます。");
-
-            while (runningRef.current) {
-                const currentSettings = settingsRef.current;
-                const agent: AgentName = turnRef.current % 2 === 0 ? "A" : "B";
-                turnRef.current += 1;
-                const completed = await generateTurn(agent, turnRef.current, currentSettings);
-                if (!completed || !runningRef.current) {
-                    break;
-                }
-                await resetModelsIfNeeded(turnRef.current);
-                await sleep(settingsRef.current.delayMs);
-            }
-        } catch (error) {
-            setStatusValue("error", "実行エラー", error instanceof Error ? error.message : String(error));
-        } finally {
-            generationAbortControllerRef.current = null;
-            runningRef.current = false;
-            activeRef.current = false;
-            setRunning(false);
-            setStatus((prev) => (prev.kind === "error" ? prev : { kind: "ready", title: "", detail: "" }));
-        }
-    }, [ensureModels, generateTurn, resetModelsIfNeeded, setStatusValue]);
-
-    const stop = useCallback((): void => {
-        runningRef.current = false;
-        generationAbortControllerRef.current?.abort();
-    }, []);
-
-    const toggle = useCallback((): void => {
-        if (runningRef.current) {
-            stop();
-        } else {
-            void start();
-        }
-    }, [start, stop]);
-
-    const clear = useCallback((): void => {
-        stop();
-        promptHistoryRef.current = [];
-        turnRef.current = 0;
-        setMessages([]);
-        destroyModels();
-        modelsRef.current = null;
-    }, [destroyModels, stop]);
-
-    const updateSettings = useCallback((patch: Partial<ConversationSettings>): void => {
-        setSettings((prev) => ({ ...prev, ...patch }));
-    }, []);
-
-    return { status, running, messages, settings, updateSettings, toggle, clear };
+        created.add(model);
+        return model;
+    };
+    try {
+        signal.throwIfAborted();
+        const [A, B] = await Promise.all([create("A", settings.agentA), create("B", settings.agentB)]);
+        signal.throwIfAborted();
+        return { A, B };
+    } catch (error) {
+        failed = true;
+        destroy();
+        throw error;
+    } finally {
+        signal.removeEventListener("abort", destroy);
+    }
 }
 
-function sleep(ms: number): Promise<void> {
+function destroyModels(models: Models | null): void {
+    if (models) {
+        for (const model of Object.values(models)) model.destroy();
+    }
+}
+
+function buildPrompt(agent: AgentName, currentSettings: ConversationSettings, history: PromptMessage[]): string {
+    const otherAgent: AgentName = agent === "A" ? "B" : "A";
+    const recentMessages = history
+        .slice(-maxRecentMessages)
+        .map((message) => `Agent ${message.agent}: ${message.text}`)
+        .join("\n");
+
+    return [
+        `テーマ: ${currentSettings.topic}`,
+        `あなたは Agent ${agent} です。次は Agent ${otherAgent} に返答してください。`,
+        `最大 ${currentSettings.maxLength} 文字。`,
+        "自然な雑談として、気軽で親しみやすい口調を保ってください。",
+        "2〜4文で、相手の質問に答えることを優先してください。",
+        "相手が出していない技術・AI・データ分析の話題を新しく始めないでください。",
+        "直近の会話に未完了の話題がある場合は、その話題を続けてください。",
+        "急に新しい近況を始めず、相手の最後の発言に直接返してください。",
+        "直近の会話:",
+        recentMessages || "まだ会話は始まっていません。",
+    ].join("\n\n");
+}
+
+function shouldResetModels(models: Record<AgentName, LanguageModel>, turn: number): boolean {
+    return (turn > 0 && turn % maxTurnsBeforeModelReset === 0) || Object.values(models).some((model) =>
+        model.contextWindow > 0 && model.contextUsage / model.contextWindow >= maxContextUsageRatio);
+}
+
+function busyStatus(title: string, detail: string): Status {
+    return { kind: "busy", title, detail };
+}
+
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
+async function checkAvailability(): Promise<{ availability: Availability; status: Status }> {
+    if (!("LanguageModel" in globalThis)) {
+        return { availability: "unavailable", status: { kind: "error", title: "Prompt API なし", detail: "Chrome Prompt API に対応した Chrome で localhost から開いてください。" } };
+    }
+    try {
+        const availability = await LanguageModel.availability(modelOptions);
+        const statuses: Record<Availability, Status> = {
+            available: { kind: "ready", title: "利用可能", detail: "Gemini Nano のローカルモデルで会話できます。" },
+            downloadable: { kind: "ready", title: "ダウンロード可能", detail: "開始ボタンでモデルの初回ダウンロードを始めます。" },
+            downloading: busyStatus("ダウンロード中", "モデルの準備が完了するまで待ってください。"),
+            unavailable: { kind: "error", title: "利用不可", detail: "この端末または Chrome 設定では Prompt API を使えません。" },
+        };
+        return { availability, status: statuses[availability] };
+    } catch (error) {
+        return { availability: "unavailable", status: { kind: "error", title: "確認失敗", detail: errorMessage(error) } };
+    }
+}
+
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
     return new Promise((resolve) => {
-        window.setTimeout(resolve, ms);
+        const finish = () => {
+            clearTimeout(timer);
+            signal.removeEventListener("abort", finish);
+            resolve();
+        };
+        const timer = setTimeout(finish, ms);
+        signal.addEventListener("abort", finish, { once: true });
+        if (signal.aborted) finish();
     });
 }

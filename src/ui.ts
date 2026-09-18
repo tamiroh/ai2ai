@@ -45,6 +45,62 @@ export type Ui = {
 };
 
 export function createUi(): Ui {
+    document.body.insertAdjacentHTML("beforeend", `
+        <main class="app">
+            <section class="control-panel" aria-label="Conversation controls">
+                <div class="brand">
+                    <h1>AI2AI</h1>
+                </div>
+
+                <div class="status-card" id="statusCard">
+                    <span class="status-dot" id="statusDot"></span>
+                    <div>
+                        <p class="status-title" id="statusTitle">未接続</p>
+                        <p class="status-detail" id="statusDetail">Chrome の Prompt API を確認しています。</p>
+                    </div>
+                </div>
+
+                <label class="field">
+                    <span>会話テーマ</span>
+                    <textarea id="topicInput" rows="4">ふたりが、最近ちょっと楽しかったことや気になることを、ゆるく話し続ける。</textarea>
+                </label>
+
+                <div class="agent-grid">
+                    <label class="field">
+                        <span>Agent A</span>
+                        <input id="agentAInput" value="穏やかで聞き上手。相手の話に乗りながら、日常の小さな発見を楽しむ。" />
+                    </label>
+                    <label class="field">
+                        <span>Agent B</span>
+                        <input id="agentBInput" value="明るく好奇心旺盛。少し冗談を交えつつ、会話をあたたかく広げる。" />
+                    </label>
+                </div>
+
+                <div class="settings-grid">
+                    <label class="field">
+                        <span>間隔 <output id="delayOutput">1.2s</output></span>
+                        <input id="delayInput" type="range" min="300" max="5000" step="100" value="1200" />
+                    </label>
+                    <label class="field">
+                        <span>1発言の上限</span>
+                        <input id="lengthInput" type="number" min="80" max="800" step="20" value="220" />
+                    </label>
+                </div>
+
+                <div class="actions">
+                    <button class="primary" id="startButton" type="button">開始</button>
+                    <button id="stopButton" type="button" disabled>停止</button>
+                    <button id="clearButton" type="button">消去</button>
+                </div>
+            </section>
+
+            <section class="conversation-shell" aria-label="AI conversation">
+                <span class="turn-counter" id="turnCounter">0 turns</span>
+                <ol class="conversation" id="conversation"></ol>
+            </section>
+        </main>
+    `);
+
     const dom: UiElements = {
         statusCard: query("#statusCard", HTMLElement),
         statusTitle: query("#statusTitle", HTMLElement),

@@ -61,7 +61,6 @@ const initialStatus: Status = { kind: "ready", title: "", detail: "" };
 export type UseConversationResult = {
     status: Status;
     running: boolean;
-    turn: number;
     messages: DisplayMessage[];
     settings: ConversationSettings;
     updateSettings: (patch: Partial<ConversationSettings>) => void;
@@ -72,7 +71,6 @@ export type UseConversationResult = {
 export function useConversation(): UseConversationResult {
     const [status, setStatus] = useState<Status>(initialStatus);
     const [running, setRunning] = useState(false);
-    const [turn, setTurn] = useState(0);
     const [messages, setMessages] = useState<DisplayMessage[]>([]);
     const [settings, setSettings] = useState<ConversationSettings>(initialSettings);
 
@@ -317,7 +315,6 @@ export function useConversation(): UseConversationResult {
                 const currentSettings = settingsRef.current;
                 const agent: AgentName = turnRef.current % 2 === 0 ? "A" : "B";
                 turnRef.current += 1;
-                setTurn(turnRef.current);
                 const completed = await generateTurn(agent, turnRef.current, currentSettings);
                 if (!completed || !runningRef.current) {
                     break;
@@ -353,7 +350,6 @@ export function useConversation(): UseConversationResult {
         stop();
         promptHistoryRef.current = [];
         turnRef.current = 0;
-        setTurn(0);
         setMessages([]);
         destroyModels();
         modelsRef.current = null;
@@ -363,7 +359,7 @@ export function useConversation(): UseConversationResult {
         setSettings((prev) => ({ ...prev, ...patch }));
     }, []);
 
-    return { status, running, turn, messages, settings, updateSettings, toggle, clear };
+    return { status, running, messages, settings, updateSettings, toggle, clear };
 }
 
 function sleep(ms: number): Promise<void> {

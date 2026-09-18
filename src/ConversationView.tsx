@@ -6,7 +6,6 @@ import type { DisplayMessage } from "./useConversation";
 
 type ConversationViewProps = {
     messages: DisplayMessage[];
-    turn: number;
 };
 
 const shellStyles = css({
@@ -24,39 +23,22 @@ const shellStyles = css({
     overflow: "hidden",
 });
 
-const turnCounterStyles = css({
-    position: "absolute",
-    top: "16px",
-    right: "24px",
-    zIndex: 1,
-    whiteSpace: "nowrap",
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: "line",
-    borderRadius: "999px",
-    padding: "8px 12px",
-    background: "panel",
-    color: "muted",
-    fontSize: "13px",
-    fontWeight: 800,
-});
-
 const listStyles = css({
     display: "flex",
     flexDirection: "column",
     gap: "14px",
     minHeight: 0,
     margin: 0,
-    padding: "64px 24px 24px",
+    padding: "24px",
     overflow: "auto",
     listStyle: "none",
 });
 
 const topFadeStyles = css({
-    maskImage: `linear-gradient(to bottom, transparent 16px, ${token("colors.panel")} 112px)`,
+    maskImage: `linear-gradient(to bottom, transparent, ${token("colors.panel")} 48px)`,
 });
 
-export function ConversationView({ messages, turn }: ConversationViewProps) {
+export function ConversationView({ messages }: ConversationViewProps) {
     const listRef = useRef<HTMLOListElement>(null);
     const [isScrolled, setIsScrolled] = useState(false);
 
@@ -80,7 +62,6 @@ export function ConversationView({ messages, turn }: ConversationViewProps) {
 
     return (
         <section className={shellStyles} aria-label="AI conversation">
-            <span className={turnCounterStyles}>{turn} turns</span>
             <ol className={`${listStyles} ${isScrolled ? topFadeStyles : ""}`} ref={listRef}>
                 {messages.map((message) => (
                     <Message key={message.id} message={message} />

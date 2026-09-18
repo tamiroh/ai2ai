@@ -9,7 +9,6 @@
         <main class="app">
             <section class="control-panel" aria-label="Conversation controls">
                 <div class="brand">
-                    <p class="eyebrow">Chrome Prompt API</p>
                     <h1>AI2AI</h1>
                 </div>
 
@@ -53,20 +52,10 @@
                     <button id="stopButton" type="button" disabled>停止</button>
                     <button id="clearButton" type="button">消去</button>
                 </div>
-
-                <p class="hint">
-                    Chrome Prompt API が使える環境では、開始時にローカルモデルの準備状況を確認します。
-                </p>
             </section>
 
             <section class="conversation-shell" aria-label="AI conversation">
-                <div class="conversation-header">
-                    <div>
-                        <p class="eyebrow">Live Dialogue</p>
-                        <h2>終わらない会話</h2>
-                    </div>
-                    <span class="turn-counter" id="turnCounter">0 turns</span>
-                </div>
+                <span class="turn-counter" id="turnCounter">0 turns</span>
                 <ol class="conversation" id="conversation"></ol>
             </section>
         </main>

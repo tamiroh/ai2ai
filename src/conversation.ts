@@ -17,6 +17,7 @@ const maxContextUsageRatio = 0.65;
 export class ConversationController {
     private models: Record<AgentName, LanguageModel> | null = null;
     private running = false;
+    private active = false;
     private turn = 0;
     private generationAbortController: AbortController | null = null;
     private messages: Message[] = [];
@@ -38,7 +39,7 @@ export class ConversationController {
             if (availability === "available") {
                 this.ui.setStatus("ready", "利用可能", "Gemini Nano のローカルモデルで会話できます。");
             } else if (availability === "downloadable") {
-                this.ui.setStatus("busy", "ダウンロード可能", "開始ボタンでモデルの初回ダウンロードを始めます。");
+                this.ui.setStatus("ready", "ダウンロード可能", "開始ボタンでモデルの初回ダウンロードを始めます。");
             } else if (availability === "downloading") {
                 this.ui.setStatus("busy", "ダウンロード中", "モデルの準備が完了するまで待ってください。");
             } else {
@@ -52,11 +53,17 @@ export class ConversationController {
     }
 
     public async start(): Promise<void> {
+        if (this.active) {
+            return;
+        }
+        this.active = true;
+        this.running = true;
+        this.ui.setControls(true);
+        this.ui.setStatus("busy", "モデル準備中", "モデルの準備状況を確認しています。");
         try {
             const initialSettings = this.ui.getSettings();
             await this.ensureModels(initialSettings);
-            this.running = true;
-            this.ui.setControls(true);
+            this.ui.setStatus("ready", "会話中", "停止するまで交互に発言し続けます。");
 
             while (this.running) {
                 const settings = this.ui.getSettings();
@@ -75,13 +82,13 @@ export class ConversationController {
         } finally {
             this.generationAbortController = null;
             this.running = false;
+            this.active = false;
             this.ui.setControls(false);
         }
     }
 
     public stop(): void {
         this.running = false;
-        this.ui.setControls(false);
         if (this.generationAbortController) {
             this.generationAbortController.abort();
         }

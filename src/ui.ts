@@ -10,9 +10,7 @@ export type ConversationSettings = {
 };
 
 type UiElements = {
-    statusCard: HTMLElement;
-    statusTitle: HTMLElement;
-    statusDetail: HTMLElement;
+    statusError: HTMLElement;
     topicInput: HTMLTextAreaElement;
     agentAInput: HTMLInputElement;
     agentBInput: HTMLInputElement;
@@ -20,7 +18,6 @@ type UiElements = {
     delayOutput: HTMLOutputElement;
     lengthInput: HTMLInputElement;
     startButton: HTMLButtonElement;
-    stopButton: HTMLButtonElement;
     clearButton: HTMLButtonElement;
     conversation: HTMLOListElement;
     turnCounter: HTMLElement;
@@ -38,8 +35,7 @@ export type Ui = {
     updateTurnCounter(turn: number): void;
     clearConversation(): void;
     getSettings(): ConversationSettings;
-    onStart(listener: () => void): void;
-    onStop(listener: () => void): void;
+    onToggle(listener: (isRunning: boolean) => void): void;
     onClear(listener: () => void): void;
     onDelayChange(listener: () => void): void;
 };
@@ -48,14 +44,6 @@ export function createUi(): Ui {
     document.body.insertAdjacentHTML("beforeend", `
         <main class="app">
             <section class="control-panel" aria-label="Conversation controls">
-                <div class="status-card" id="statusCard">
-                    <span class="status-dot" id="statusDot"></span>
-                    <div>
-                        <p class="status-title" id="statusTitle">未接続</p>
-                        <p class="status-detail" id="statusDetail">Chrome の Prompt API を確認しています。</p>
-                    </div>
-                </div>
-
                 <label class="field">
                     <span>会話テーマ</span>
                     <textarea id="topicInput" rows="4">ふたりが、最近ちょっと楽しかったことや気になることを、ゆるく話し続ける。</textarea>
@@ -85,9 +73,9 @@ export function createUi(): Ui {
 
                 <div class="actions">
                     <button class="primary" id="startButton" type="button">開始</button>
-                    <button id="stopButton" type="button" disabled>停止</button>
                     <button id="clearButton" type="button">消去</button>
                 </div>
+                <p class="status-error" id="statusError" role="alert" hidden></p>
             </section>
 
             <section class="conversation-shell" aria-label="AI conversation">
@@ -98,9 +86,7 @@ export function createUi(): Ui {
     `);
 
     const dom: UiElements = {
-        statusCard: query("#statusCard", HTMLElement),
-        statusTitle: query("#statusTitle", HTMLElement),
-        statusDetail: query("#statusDetail", HTMLElement),
+        statusError: query("#statusError", HTMLElement),
         topicInput: query("#topicInput", HTMLTextAreaElement),
         agentAInput: query("#agentAInput", HTMLInputElement),
         agentBInput: query("#agentBInput", HTMLInputElement),
@@ -108,22 +94,36 @@ export function createUi(): Ui {
         delayOutput: query("#delayOutput", HTMLOutputElement),
         lengthInput: query("#lengthInput", HTMLInputElement),
         startButton: query("#startButton", HTMLButtonElement),
-        stopButton: query("#stopButton", HTMLButtonElement),
         clearButton: query("#clearButton", HTMLButtonElement),
         conversation: query("#conversation", HTMLOListElement),
         turnCounter: query("#turnCounter", HTMLElement),
     };
 
+    let running = false;
+    let status: StatusKind = "ready";
+
+    function updateStartButton(): void {
+        dom.startButton.classList.toggle("is-busy", status === "busy");
+        dom.startButton.textContent = status === "busy" ? "準備中" : running ? "停止" : "開始";
+        dom.startButton.setAttribute("aria-label", running ? "停止" : "開始");
+    }
+
     return {
         setStatus(kind, title, detail) {
-            dom.statusCard.className = `status-card ${kind}`;
-            dom.statusTitle.textContent = title;
-            dom.statusDetail.textContent = detail;
+            status = kind;
+            dom.startButton.title = `${title}：${detail}`;
+            dom.statusError.hidden = kind !== "error";
+            dom.statusError.textContent = kind === "error" ? `${title}：${detail}` : "";
+            updateStartButton();
         },
 
         setControls(isRunning) {
-            dom.startButton.disabled = isRunning;
-            dom.stopButton.disabled = !isRunning;
+            running = isRunning;
+            if (!isRunning && status !== "error") {
+                status = "ready";
+                dom.startButton.removeAttribute("title");
+            }
+            updateStartButton();
         },
 
         updateDelayLabel() {
@@ -194,12 +194,8 @@ export function createUi(): Ui {
             };
         },
 
-        onStart(listener) {
-            dom.startButton.addEventListener("click", listener);
-        },
-
-        onStop(listener) {
-            dom.stopButton.addEventListener("click", listener);
+        onToggle(listener) {
+            dom.startButton.addEventListener("click", () => listener(running));
         },
 
         onClear(listener) {

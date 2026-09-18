@@ -5,11 +5,12 @@ import { createUi } from "./ui";
 const ui = createUi();
 const conversation = new ConversationController(ui);
 
-ui.onStart(() => {
-    void conversation.start();
-});
-ui.onStop(() => {
-    conversation.stop();
+ui.onToggle((isRunning) => {
+    if (isRunning) {
+        conversation.stop();
+    } else {
+        void conversation.start();
+    }
 });
 ui.onClear(() => {
     conversation.clear();

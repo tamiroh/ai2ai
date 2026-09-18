@@ -48,10 +48,6 @@ export function createUi(): Ui {
     document.body.insertAdjacentHTML("beforeend", `
         <main class="app">
             <section class="control-panel" aria-label="Conversation controls">
-                <div class="brand">
-                    <h1>AI2AI</h1>
-                </div>
-
                 <div class="status-card" id="statusCard">
                     <span class="status-dot" id="statusDot"></span>
                     <div>

@@ -1,10 +1,42 @@
 import { produce } from "immer";
 import { useCallback, useEffect, useReducer } from "preact/hooks";
 import { useAvailability } from "./useAvailability";
-import { sleep } from "./utils";
 import { modelOptions, useModels } from "./useModels";
-import type { AiParticipant, ModelEvent, ModelSet } from "./useModels";
+import { sleep } from "./utils";
 import type { AvailabilityState } from "./useAvailability";
+import type { AiParticipant, ModelEvent, ModelSet } from "./useModels";
+
+export type Participant = AiParticipant | "human";
+
+export type ConversationSettings = {
+    topic: string;
+    participantA: string;
+    participantB: string;
+    delayMs: number;
+    maxLength: number;
+};
+
+export type AiDisplayMessage = {
+    id: string;
+    kind: "ai";
+    participant: AiParticipant;
+    text: string;
+    turn: number;
+};
+
+export type SystemDisplayMessage = {
+    id: string;
+    kind: "system";
+    text: string;
+};
+
+export type HumanDisplayMessage = {
+    id: string;
+    kind: "human";
+    text: string;
+};
+
+export type DisplayMessage = AiDisplayMessage | SystemDisplayMessage | HumanDisplayMessage;
 
 export type Status =
     | { kind: "idle" | "preparing" | "running" }
@@ -16,6 +48,11 @@ export type UseConversationResult = {
     messages: DisplayMessage[];
     typingName: string | null;
     sendHumanMessage: (text: string) => void;
+};
+
+type PromptMessage = {
+    speaker: Participant;
+    text: string;
 };
 
 type Turn = {
@@ -43,6 +80,8 @@ type Action =
     | { type: "completed"; turn: Turn; text: string }
     | { type: "next"; turn: Turn }
     | { type: "error"; turn: Turn; error: unknown };
+
+const maxRecentMessages = 8;
 
 const initialStatus: Status = { kind: "idle" };
 const initialState: State = {
@@ -214,42 +253,3 @@ export function useConversation(): UseConversationResult {
         sendHumanMessage,
     };
 }
-
-export type Participant = AiParticipant | "human";
-
-export type ConversationSettings = {
-    topic: string;
-    participantA: string;
-    participantB: string;
-    delayMs: number;
-    maxLength: number;
-};
-
-export type AiDisplayMessage = {
-    id: string;
-    kind: "ai";
-    participant: AiParticipant;
-    text: string;
-    turn: number;
-};
-
-export type SystemDisplayMessage = {
-    id: string;
-    kind: "system";
-    text: string;
-};
-
-export type HumanDisplayMessage = {
-    id: string;
-    kind: "human";
-    text: string;
-};
-
-export type DisplayMessage = AiDisplayMessage | SystemDisplayMessage | HumanDisplayMessage;
-
-type PromptMessage = {
-    speaker: Participant;
-    text: string;
-};
-
-const maxRecentMessages = 8;

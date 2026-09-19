@@ -7,12 +7,36 @@ type MessageProps = {
 
 const itemStyles = css({
     display: "flex",
-    flexDirection: "column",
-    gap: "6px",
+    alignItems: "flex-start",
+    gap: "12px",
     width: "min(760px, 88%)",
     "@media (max-width: 860px)": {
         width: "100%",
     },
+});
+
+const avatarStyles = css({
+    display: "grid",
+    placeItems: "center",
+    flexShrink: 0,
+    width: "36px",
+    height: "36px",
+    borderRadius: "50%",
+    color: "panel",
+    fontSize: "15px",
+    fontWeight: 800,
+});
+
+const avatarAStyles = css({ background: "agentA" });
+
+const avatarBStyles = css({ background: "agentB" });
+
+const bodyStyles = css({
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    minWidth: 0,
 });
 
 const nameStyles = css({
@@ -82,9 +106,14 @@ export function Message({ message }: MessageProps) {
 
     return (
         <li className={itemStyles}>
-            <div className={nameStyles}>Agent {message.agent}</div>
-            <div className={bubbleStyles}>
-                <p className={textStyles}>{message.text}</p>
+            <div className={`${avatarStyles} ${message.agent === "A" ? avatarAStyles : avatarBStyles}`} aria-hidden="true">
+                {message.agent}
+            </div>
+            <div className={bodyStyles}>
+                <div className={nameStyles}>Agent {message.agent}</div>
+                <div className={bubbleStyles}>
+                    <p className={textStyles}>{message.text}</p>
+                </div>
             </div>
         </li>
     );

@@ -206,9 +206,6 @@ export function useConversation(): UseConversationResult {
                 modelsRef.current = models;
             }
             dispatch({ type: "generating", turn: currentTurn });
-            console.groupCollapsed(`[AI2AI] prompt turn=${currentTurn.number} agent=${currentTurn.agent}`);
-            console.log(currentTurn.prompt);
-            console.groupEnd();
             const output = await generateResponse(modelsRef.current[currentTurn.agent], currentTurn.prompt, signal, (text) => {
                 dispatch({ type: "chunk", turn: currentTurn, text });
             });

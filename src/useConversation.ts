@@ -167,79 +167,66 @@ export function useConversation(): UseConversationResult {
         };
     }, [releaseModels]);
 
+    const runTurn = useCallback(async (currentTurn: Turn, controller: AbortController): Promise<void> => {
+        const { signal } = controller;
+        try {
+            if (currentTurn.replaceModels) {
+                releaseModels();
+            }
+            if (modelsRef.current && shouldResetModels(modelsRef.current, currentTurn.number - 1)) {
+                releaseModels();
+                dispatch({ type: "reset", turn: currentTurn });
+            }
+            if (!modelsRef.current) {
+                const { availability, status } = await checkAvailability();
+                signal.throwIfAborted();
+                if (availability === "unavailable") {
+                    throw new Error(status.detail);
+                }
+                const models = await createModels(currentTurn.settings, signal, (status) => {
+                    dispatch({ type: "status", turn: currentTurn, status });
+                });
+                if (signal.aborted) {
+                    destroyModels(models);
+                    return;
+                }
+                modelsRef.current = models;
+            }
+            dispatch({ type: "generating", turn: currentTurn });
+            console.groupCollapsed(`[AI2AI] prompt turn=${currentTurn.number} agent=${currentTurn.agent}`);
+            console.log(currentTurn.prompt);
+            console.groupEnd();
+            const output = await generateResponse(modelsRef.current[currentTurn.agent], currentTurn.prompt, signal, (text) => {
+                dispatch({ type: "chunk", turn: currentTurn, text });
+            });
+            signal.throwIfAborted();
+            dispatch({ type: "completed", turn: currentTurn, text: output.trim() });
+            await sleep(currentTurn.settings.delayMs, signal);
+            signal.throwIfAborted();
+            dispatch({ type: "next", turn: currentTurn });
+        } catch (error) {
+            if (!signal.aborted) {
+                controller.abort();
+                releaseModels();
+                dispatch({ type: "error", turn: currentTurn, error });
+            }
+        }
+    }, [releaseModels]);
+
     useEffect(() => {
         if (!turn) {
             return;
         }
         const controller = new AbortController();
-        const { signal } = controller;
         abortRef.current = controller;
-
-        async function runTurn(currentTurn: Turn): Promise<void> {
-            try {
-                if (currentTurn.replaceModels) {
-                    releaseModels();
-                }
-                if (modelsRef.current && shouldResetModels(modelsRef.current, currentTurn.number - 1)) {
-                    releaseModels();
-                    dispatch({ type: "reset", turn: currentTurn });
-                }
-                if (!modelsRef.current) {
-                    const { availability, status } = await checkAvailability();
-                    signal.throwIfAborted();
-                    if (availability === "unavailable") {
-                        throw new Error(status.detail);
-                    }
-                    const models = await createModels(currentTurn.settings, signal, (status) => {
-                        dispatch({ type: "status", turn: currentTurn, status });
-                    });
-                    if (signal.aborted) {
-                        destroyModels(models);
-                        return;
-                    }
-                    modelsRef.current = models;
-                }
-                dispatch({ type: "generating", turn: currentTurn });
-                console.groupCollapsed(`[AI2AI] prompt turn=${currentTurn.number} agent=${currentTurn.agent}`);
-                console.log(currentTurn.prompt);
-                console.groupEnd();
-                const reader = modelsRef.current[currentTurn.agent]
-                    .promptStreaming(currentTurn.prompt, { signal }).getReader();
-                let output = "";
-                try {
-                    while (true) {
-                        const { done, value } = await reader.read();
-                        signal.throwIfAborted();
-                        if (done) {
-                            break;
-                        }
-                        output += value;
-                        dispatch({ type: "chunk", turn: currentTurn, text: output });
-                    }
-                } finally {
-                    reader.releaseLock();
-                }
-                dispatch({ type: "completed", turn: currentTurn, text: output.trim() });
-                await sleep(currentTurn.settings.delayMs, signal);
-                signal.throwIfAborted();
-                dispatch({ type: "next", turn: currentTurn });
-            } catch (error) {
-                if (!signal.aborted) {
-                    controller.abort();
-                    releaseModels();
-                    dispatch({ type: "error", turn: currentTurn, error });
-                }
-            }
-        }
-
-        void runTurn(turn);
+        void runTurn(turn, controller);
         return () => {
             controller.abort();
             if (abortRef.current === controller) {
                 abortRef.current = null;
             }
         };
-    }, [turn, releaseModels]);
+    }, [turn, runTurn]);
 
     const cancel = useCallback(() => {
         availabilityAbortRef.current?.abort();
@@ -455,4 +442,27 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
         signal.addEventListener("abort", finish, { once: true });
         if (signal.aborted) finish();
     });
+}
+
+async function generateResponse(
+    model: LanguageModel,
+    prompt: string,
+    signal: AbortSignal,
+    onText: (text: string) => void,
+): Promise<string> {
+    const reader = model.promptStreaming(prompt, { signal }).getReader();
+    let output = "";
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            signal.throwIfAborted();
+            if (done) {
+                return output;
+            }
+            output += value;
+            onText(output);
+        }
+    } finally {
+        reader.releaseLock();
+    }
 }

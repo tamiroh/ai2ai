@@ -4,7 +4,7 @@ import { useAvailability } from "./useAvailability";
 import { modelOptions, useModels } from "./useModels";
 import { sleep } from "./utils";
 import type { AvailabilityState } from "./useAvailability";
-import type { AiParticipant, ModelEvent, ModelSet } from "./useModels";
+import type { AiParticipant, ModelEvent } from "./useModels";
 
 export type Participant = AiParticipant | "human";
 
@@ -214,31 +214,30 @@ export function useConversation(): UseConversationResult {
         B: settings.participantB,
     });
 
-    const runTurn = useCallback(async (currentTurn: Turn, models: ModelSet, controller: AbortController): Promise<void> => {
-        const { signal } = controller;
-        try {
-            dispatch({ type: "generating", turn: currentTurn });
-            const output = await models.prompt(currentTurn.participant, currentTurn.prompt, signal);
-            dispatch({ type: "completed", turn: currentTurn, text: output.trim() });
-            await sleep(currentTurn.settings.delayMs, signal);
-            models.resetIfNeeded(currentTurn.number);
-            dispatch({ type: "next", turn: currentTurn });
-        } catch (error) {
-            if (!signal.aborted) {
-                controller.abort();
-                dispatch({ type: "error", turn: currentTurn, error });
-            }
-        }
-    }, []);
-
     useEffect(() => {
         if (!turn || !models) {
             return;
         }
         const controller = new AbortController();
-        void runTurn(turn, models, controller);
+        const { signal } = controller;
+        const runTurn = async () => {
+            try {
+                dispatch({ type: "generating", turn });
+                const output = await models.prompt(turn.participant, turn.prompt, signal);
+                dispatch({ type: "completed", turn, text: output.trim() });
+                await sleep(turn.settings.delayMs, signal);
+                models.resetIfNeeded(turn.number);
+                dispatch({ type: "next", turn });
+            } catch (error) {
+                if (!signal.aborted) {
+                    controller.abort();
+                    dispatch({ type: "error", turn, error });
+                }
+            }
+        };
+        void runTurn();
         return () => controller.abort();
-    }, [turn, models, runTurn]);
+    }, [turn, models]);
 
     const sendHumanMessage = useCallback((text: string) => {
         dispatch({ type: "human", text });

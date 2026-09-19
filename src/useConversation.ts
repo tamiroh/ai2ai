@@ -66,37 +66,37 @@ const initialState: State = {
     nextTurn: 1,
 };
 
-function beginTurn(state: State): State {
-    const agent: AgentName = state.nextTurn % 2 === 1 ? "A" : "B";
-    // Freeze the inputs for this turn; settings edits apply when the next turn begins.
-    return {
-        ...state,
-        phase: "preparing",
-        status: { kind: "preparing" },
-        turn: {
-            number: state.nextTurn,
-            agent,
-            settings: state.settings,
-            prompt: buildPrompt(agent, state.settings, state.history),
-            replaceModels: state.turn !== null && (
-                state.turn.settings.agentA !== state.settings.agentA ||
-                state.turn.settings.agentB !== state.settings.agentB
-            ),
-        },
-        nextTurn: state.nextTurn + 1,
-    };
-}
-
-function finish(state: State, status = initialStatus): State {
-    return {
-        ...state, phase: "idle", turn: null, status,
-        messages: state.messages.map((message) => message.kind === "agent" && message.pending
-            ? { ...message, pending: false, text: message.text || (status.kind === "error" ? "生成に失敗しました。" : "停止しました。") }
-            : message),
-    };
-}
-
 function reducer(state: State, action: Action): State {
+    function beginTurn(): State {
+        const agent: AgentName = state.nextTurn % 2 === 1 ? "A" : "B";
+        // Freeze the inputs for this turn; settings edits apply when the next turn begins.
+        return {
+            ...state,
+            phase: "preparing",
+            status: { kind: "preparing" },
+            turn: {
+                number: state.nextTurn,
+                agent,
+                settings: state.settings,
+                prompt: buildPrompt(agent, state.settings, state.history),
+                replaceModels: state.turn !== null && (
+                    state.turn.settings.agentA !== state.settings.agentA ||
+                    state.turn.settings.agentB !== state.settings.agentB
+                ),
+            },
+            nextTurn: state.nextTurn + 1,
+        };
+    }
+
+    function finish(status = initialStatus): State {
+        return {
+            ...state, phase: "idle", turn: null, status,
+            messages: state.messages.map((message) => message.kind === "agent" && message.pending
+                ? { ...message, pending: false, text: message.text || (status.kind === "error" ? "生成に失敗しました。" : "停止しました。") }
+                : message),
+        };
+    }
+
     // A cleared or stopped turn may still resolve after the next one starts.
     if ("turn" in action && action.turn !== state.turn) {
         return state;
@@ -105,7 +105,7 @@ function reducer(state: State, action: Action): State {
         case "settings":
             return { ...state, settings: { ...state.settings, ...action.patch } };
         case "toggle":
-            return state.turn ? finish(state) : beginTurn(state);
+            return state.turn ? finish() : beginTurn();
         case "clear":
             return { ...initialState, settings: state.settings, status: initialStatus };
         case "progress":
@@ -113,7 +113,7 @@ function reducer(state: State, action: Action): State {
                 ? { ...state, status: { kind: "downloading", progress: action.progress } }
                 : state;
         case "unavailable":
-            return finish(state, { kind: "availability", value: action.availability });
+            return finish({ kind: "availability", value: action.availability });
         case "reset":
             return {
                 ...state,
@@ -144,9 +144,9 @@ function reducer(state: State, action: Action): State {
                     : state.history,
             };
         case "next":
-            return beginTurn(state);
+            return beginTurn();
         case "error":
-            return finish(state, { kind: "error", error: action.error });
+            return finish({ kind: "error", error: action.error });
     }
 }
 

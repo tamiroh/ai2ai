@@ -143,9 +143,10 @@ const statusErrorStyles = css({
 });
 
 export function ControlPanel({ status, running, settings, onSettingsChange, onToggle, onClear }: ControlPanelProps) {
-    const isBusy = status.kind === "busy";
+    const displayStatus = describeStatus(status);
+    const isBusy = displayStatus.kind === "busy";
     const buttonLabel = isBusy ? "準備中" : running ? "停止" : "開始";
-    const buttonTitle = status.title ? `${status.title}：${status.detail}` : undefined;
+    const buttonTitle = displayStatus.title ? `${displayStatus.title}：${displayStatus.detail}` : undefined;
 
     return (
         <section className={panelSectionStyles} aria-label="Conversation controls">
@@ -221,11 +222,55 @@ export function ControlPanel({ status, running, settings, onSettingsChange, onTo
                     消去
                 </button>
             </div>
-            {status.kind === "error" && (
+            {displayStatus.kind === "error" && (
                 <p className={statusErrorStyles} role="alert">
-                    {status.title}：{status.detail}
+                    {displayStatus.title}：{displayStatus.detail}
                 </p>
             )}
         </section>
     );
+}
+
+type DisplayStatus = {
+    kind: "ready" | "busy" | "error";
+    title: string;
+    detail: string;
+};
+
+function describeStatus(status: Status): DisplayStatus {
+    switch (status.kind) {
+        case "idle":
+            return { kind: "ready", title: "", detail: "" };
+        case "preparing":
+            return { kind: "busy", title: "モデル準備中", detail: "モデルの準備状況を確認しています。" };
+        case "resetting":
+            return { kind: "busy", title: "文脈整理中", detail: "会話が重くならないよう AI モデルを作り直しています。" };
+        case "running":
+            return { kind: "ready", title: "会話中", detail: "停止するまで交互に発言し続けます。" };
+        case "downloading":
+            return { kind: "busy", title: "モデルをダウンロード中", detail: `${Math.round(status.progress * 100)}% 完了` };
+        case "error":
+            return { kind: "error", title: "実行エラー", detail: errorMessage(status.error) };
+        case "availability":
+            switch (status.value.kind) {
+                case "checking":
+                    return { kind: "ready", title: "", detail: "" };
+                case "available":
+                    return { kind: "ready", title: "利用可能", detail: "Gemini Nano のローカルモデルで会話できます。" };
+                case "downloadable":
+                    return { kind: "ready", title: "ダウンロード可能", detail: "開始ボタンでモデルの初回ダウンロードを始めます。" };
+                case "downloading":
+                    return { kind: "busy", title: "ダウンロード中", detail: "モデルの準備が完了するまで待ってください。" };
+                case "unavailable":
+                    return { kind: "error", title: "利用不可", detail: "この端末または Chrome 設定では Prompt API を使えません。" };
+                case "unsupported":
+                    return { kind: "error", title: "Prompt API なし", detail: "Chrome Prompt API に対応した Chrome で localhost から開いてください。" };
+                case "error":
+                    return { kind: "error", title: "確認失敗", detail: errorMessage(status.value.error) };
+            }
+    }
+}
+
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
 }

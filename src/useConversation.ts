@@ -1,4 +1,12 @@
 import { useCallback, useEffect, useReducer, useRef } from "preact/hooks";
+import { checkAvailability, useAvailability } from "./useAvailability";
+import type { AvailabilityResult, AvailabilityState } from "./useAvailability";
+
+export type Status =
+    | { kind: "idle" | "preparing" | "resetting" | "running" }
+    | { kind: "availability"; value: AvailabilityState }
+    | { kind: "downloading"; progress: number }
+    | { kind: "error"; error: unknown };
 
 export type UseConversationResult = {
     status: Status;
@@ -20,7 +28,7 @@ type Turn = {
 
 type State = {
     settings: ConversationSettings;
-    status: Status;
+    status: Status | null;
     messages: DisplayMessage[];
     history: PromptMessage[];
     phase: "idle" | "preparing" | "generating" | "waiting";
@@ -30,10 +38,10 @@ type State = {
 
 type Action =
     | { type: "settings"; patch: Partial<ConversationSettings> }
-    | { type: "availability"; status: Status }
     | { type: "toggle" }
     | { type: "clear" }
-    | { type: "status"; turn: Turn; status: Status }
+    | { type: "progress"; turn: Turn; progress: number }
+    | { type: "unavailable"; turn: Turn; availability: AvailabilityResult }
     | { type: "reset"; turn: Turn }
     | { type: "generating"; turn: Turn }
     | { type: "chunk"; turn: Turn; text: string }
@@ -41,10 +49,7 @@ type Action =
     | { type: "next"; turn: Turn }
     | { type: "error"; turn: Turn; error: unknown };
 
-const initialStatus: Status = { kind: "ready", title: "", detail: "" };
-const conversationStatus: Status = {
-    kind: "ready", title: "会話中", detail: "停止するまで交互に発言し続けます。",
-};
+const initialStatus: Status = { kind: "idle" };
 const initialState: State = {
     settings: {
         topic: "ふたりが、最近ちょっと楽しかったことや気になることを、ゆるく話し続ける。",
@@ -53,7 +58,7 @@ const initialState: State = {
         delayMs: 1200,
         maxLength: 220,
     },
-    status: initialStatus,
+    status: null,
     messages: [],
     history: [],
     phase: "idle",
@@ -67,7 +72,7 @@ function beginTurn(state: State): State {
     return {
         ...state,
         phase: "preparing",
-        status: busyStatus("モデル準備中", "モデルの準備状況を確認しています。"),
+        status: { kind: "preparing" },
         turn: {
             number: state.nextTurn,
             agent,
@@ -99,18 +104,20 @@ function reducer(state: State, action: Action): State {
     switch (action.type) {
         case "settings":
             return { ...state, settings: { ...state.settings, ...action.patch } };
-        case "availability":
-            return state.nextTurn === 1 && !state.turn ? { ...state, status: action.status } : state;
         case "toggle":
             return state.turn ? finish(state) : beginTurn(state);
         case "clear":
-            return { ...initialState, settings: state.settings };
-        case "status":
-            return state.phase === "preparing" ? { ...state, status: action.status } : state;
+            return { ...initialState, settings: state.settings, status: initialStatus };
+        case "progress":
+            return state.phase === "preparing"
+                ? { ...state, status: { kind: "downloading", progress: action.progress } }
+                : state;
+        case "unavailable":
+            return finish(state, { kind: "availability", value: action.availability });
         case "reset":
             return {
                 ...state,
-                status: busyStatus("文脈整理中", "会話が重くならないよう AI モデルを作り直しています。"),
+                status: { kind: "resetting" },
                 messages: [...state.messages, {
                     id: -action.turn.number, kind: "system",
                     text: `Turn ${action.turn.number - 1}。ふたりは少し深呼吸して、直近の話の余韻から会話を続けます。`,
@@ -118,7 +125,7 @@ function reducer(state: State, action: Action): State {
             };
         case "generating":
             return {
-                ...state, phase: "generating", status: conversationStatus,
+                ...state, phase: "generating", status: { kind: "running" },
                 messages: [...state.messages, {
                     id: action.turn.number, kind: "agent", agent: action.turn.agent,
                     turn: action.turn.number, text: "", pending: true,
@@ -139,7 +146,7 @@ function reducer(state: State, action: Action): State {
         case "next":
             return beginTurn(state);
         case "error":
-            return finish(state, { kind: "error", title: "実行エラー", detail: errorMessage(action.error) });
+            return finish(state, { kind: "error", error: action.error });
     }
 }
 
@@ -147,7 +154,7 @@ export function useConversation(): UseConversationResult {
     const [state, dispatch] = useReducer(reducer, initialState);
     const modelsRef = useRef<Models | null>(null);
     const abortRef = useRef<AbortController | null>(null);
-    const availabilityAbortRef = useRef<AbortController | null>(null);
+    const availability = useAvailability(modelOptions);
     const { turn } = state;
 
     const releaseModels = useCallback(() => {
@@ -155,17 +162,7 @@ export function useConversation(): UseConversationResult {
         modelsRef.current = null;
     }, []);
 
-    useEffect(() => {
-        const controller = new AbortController();
-        availabilityAbortRef.current = controller;
-        void checkAvailability().then(({ status }) => {
-            if (!controller.signal.aborted) dispatch({ type: "availability", status });
-        });
-        return () => {
-            controller.abort();
-            releaseModels();
-        };
-    }, [releaseModels]);
+    useEffect(() => releaseModels, [releaseModels]);
 
     const runTurn = useCallback(async (currentTurn: Turn, controller: AbortController): Promise<void> => {
         const { signal } = controller;
@@ -178,13 +175,14 @@ export function useConversation(): UseConversationResult {
                 dispatch({ type: "reset", turn: currentTurn });
             }
             if (!modelsRef.current) {
-                const { availability, status } = await checkAvailability();
+                const result = await checkAvailability(modelOptions);
                 signal.throwIfAborted();
-                if (availability === "unavailable") {
-                    throw new Error(status.detail);
+                if (result.kind === "unsupported" || result.kind === "unavailable" || result.kind === "error") {
+                    dispatch({ type: "unavailable", turn: currentTurn, availability: result });
+                    return;
                 }
-                const models = await createModels(currentTurn.settings, signal, (status) => {
-                    dispatch({ type: "status", turn: currentTurn, status });
+                const models = await createModels(currentTurn.settings, signal, (progress) => {
+                    dispatch({ type: "progress", turn: currentTurn, progress });
                 });
                 if (signal.aborted) {
                     destroyModels(models);
@@ -229,7 +227,6 @@ export function useConversation(): UseConversationResult {
     }, [turn, runTurn]);
 
     const cancel = useCallback(() => {
-        availabilityAbortRef.current?.abort();
         abortRef.current?.abort();
         releaseModels();
     }, [releaseModels]);
@@ -249,7 +246,7 @@ export function useConversation(): UseConversationResult {
     }, []);
 
     return {
-        status: state.status,
+        status: state.status ?? { kind: "availability", value: availability },
         running: state.phase !== "idle",
         messages: state.messages,
         settings: state.settings,
@@ -260,7 +257,6 @@ export function useConversation(): UseConversationResult {
 }
 
 export type AgentName = "A" | "B";
-export type StatusKind = "ready" | "busy" | "error";
 
 export type ConversationSettings = {
     topic: string;
@@ -268,12 +264,6 @@ export type ConversationSettings = {
     agentB: string;
     delayMs: number;
     maxLength: number;
-};
-
-export type Status = {
-    kind: StatusKind;
-    title: string;
-    detail: string;
 };
 
 export type AgentDisplayMessage = {
@@ -312,7 +302,7 @@ type Models = Record<AgentName, LanguageModel>;
 async function createModels(
     settings: ConversationSettings,
     signal: AbortSignal,
-    onProgress: (status: Status) => void,
+    onProgress: (progress: number) => void,
 ): Promise<Models> {
     const created = new Set<LanguageModel>();
     const destroy = () => {
@@ -347,7 +337,7 @@ async function createModels(
             monitor: (monitor: CreateMonitor) => {
                 monitor.addEventListener("downloadprogress", (event) => {
                     if (!signal.aborted && !failed) {
-                        onProgress(busyStatus("モデルをダウンロード中", `${Math.round((event as ProgressEvent).loaded * 100)}% 完了`));
+                        onProgress((event as ProgressEvent).loaded);
                     }
                 });
             },
@@ -403,32 +393,6 @@ function buildPrompt(agent: AgentName, currentSettings: ConversationSettings, hi
 function shouldResetModels(models: Record<AgentName, LanguageModel>, turn: number): boolean {
     return (turn > 0 && turn % maxTurnsBeforeModelReset === 0) || Object.values(models).some((model) =>
         model.contextWindow > 0 && model.contextUsage / model.contextWindow >= maxContextUsageRatio);
-}
-
-function busyStatus(title: string, detail: string): Status {
-    return { kind: "busy", title, detail };
-}
-
-function errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-}
-
-async function checkAvailability(): Promise<{ availability: Availability; status: Status }> {
-    if (!("LanguageModel" in globalThis)) {
-        return { availability: "unavailable", status: { kind: "error", title: "Prompt API なし", detail: "Chrome Prompt API に対応した Chrome で localhost から開いてください。" } };
-    }
-    try {
-        const availability = await LanguageModel.availability(modelOptions);
-        const statuses: Record<Availability, Status> = {
-            available: { kind: "ready", title: "利用可能", detail: "Gemini Nano のローカルモデルで会話できます。" },
-            downloadable: { kind: "ready", title: "ダウンロード可能", detail: "開始ボタンでモデルの初回ダウンロードを始めます。" },
-            downloading: busyStatus("ダウンロード中", "モデルの準備が完了するまで待ってください。"),
-            unavailable: { kind: "error", title: "利用不可", detail: "この端末または Chrome 設定では Prompt API を使えません。" },
-        };
-        return { availability, status: statuses[availability] };
-    } catch (error) {
-        return { availability: "unavailable", status: { kind: "error", title: "確認失敗", detail: errorMessage(error) } };
-    }
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {

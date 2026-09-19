@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef } from "preact/hooks";
-import { checkAvailability, useAvailability } from "./useAvailability";
+import { useAvailability } from "./useAvailability";
 import type { AvailabilityResult, AvailabilityState } from "./useAvailability";
 
 export type Status =
@@ -175,12 +175,6 @@ export function useConversation(): UseConversationResult {
                 dispatch({ type: "reset", turn: currentTurn });
             }
             if (!modelsRef.current) {
-                const result = await checkAvailability(modelOptions);
-                signal.throwIfAborted();
-                if (result.kind === "unsupported" || result.kind === "unavailable" || result.kind === "error") {
-                    dispatch({ type: "unavailable", turn: currentTurn, availability: result });
-                    return;
-                }
                 const models = await createModels(currentTurn.settings, signal, (progress) => {
                     dispatch({ type: "progress", turn: currentTurn, progress });
                 });
@@ -212,7 +206,11 @@ export function useConversation(): UseConversationResult {
     }, [releaseModels]);
 
     useEffect(() => {
-        if (!turn) {
+        if (!turn || availability.kind === "checking") {
+            return;
+        }
+        if (availability.kind === "unsupported" || availability.kind === "unavailable" || availability.kind === "error") {
+            dispatch({ type: "unavailable", turn, availability });
             return;
         }
         const controller = new AbortController();
@@ -224,7 +222,7 @@ export function useConversation(): UseConversationResult {
                 abortRef.current = null;
             }
         };
-    }, [turn, runTurn]);
+    }, [turn, availability, runTurn]);
 
     const cancel = useCallback(() => {
         abortRef.current?.abort();

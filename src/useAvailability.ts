@@ -24,7 +24,7 @@ export function useAvailability(options: LanguageModelCreateCoreOptions) {
     return availability;
 }
 
-export async function checkAvailability(options: LanguageModelCreateCoreOptions): Promise<AvailabilityResult> {
+async function checkAvailability(options: LanguageModelCreateCoreOptions): Promise<AvailabilityResult> {
     if (!("LanguageModel" in globalThis)) {
         return { kind: "unsupported" };
     }

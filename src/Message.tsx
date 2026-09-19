@@ -1,4 +1,5 @@
 import { css } from "../styled-system/css";
+import { token } from "../styled-system/tokens";
 import type { DisplayMessage } from "./useConversation";
 
 type MessageProps = {
@@ -91,13 +92,14 @@ const bubbleStyles = css({
 
 const systemStyles = css({
     alignSelf: "center",
-    width: "min(620px, 100%)",
-    borderWidth: "1px",
-    borderStyle: "dashed",
-    borderColor: "line",
-    borderRadius: "8px",
-    padding: "14px 16px",
-    color: "muted",
+    maxWidth: "min(620px, 100%)",
+    borderRadius: "12px",
+    padding: "5px 14px",
+    background: `color-mix(in srgb, ${token("colors.ink")} 45%, transparent)`,
+    color: "panel",
+    fontSize: "12px",
+    lineHeight: 1.5,
+    textAlign: "center",
 });
 
 const textStyles = css({
@@ -106,13 +108,11 @@ const textStyles = css({
     lineHeight: 1.65,
 });
 
-const textCenteredStyles = css({ textAlign: "center" });
-
 export function Message({ message }: MessageProps) {
     if (message.kind === "system") {
         return (
             <li className={systemStyles}>
-                <p className={`${textStyles} ${textCenteredStyles}`}>{message.text}</p>
+                {message.text}
             </li>
         );
     }

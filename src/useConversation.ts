@@ -1,5 +1,5 @@
 import { produce } from "immer";
-import { useCallback, useEffect, useReducer, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "preact/hooks";
 import type { Dispatch } from "preact/hooks";
 import { useAvailability } from "./useAvailability";
 import { sleep } from "./utils";
@@ -32,7 +32,6 @@ type State = {
     phase: "idle" | "preparing" | "generating" | "waiting";
     turn: Turn | null;
     nextTurn: number;
-    modelEpoch: number;
 };
 
 type Action =
@@ -43,7 +42,7 @@ type Action =
     | { type: "modelsFailed"; error: unknown }
     | { type: "generating"; turn: Turn }
     | { type: "completed"; turn: Turn; text: string }
-    | { type: "next"; turn: Turn; resetModels: boolean }
+    | { type: "next"; turn: Turn }
     | { type: "error"; turn: Turn; error: unknown };
 
 const initialStatus: Status = { kind: "idle" };
@@ -61,7 +60,6 @@ const initialState: State = {
     phase: "idle",
     turn: null,
     nextTurn: 1,
-    modelEpoch: 0,
 };
 
 // Freeze the inputs for a turn; the prompt is built from the history at this moment.
@@ -159,9 +157,6 @@ function reducer(state: State, action: Action): State {
                 appendHistory({ speaker: action.turn.participant, text: action.text });
                 break;
             case "next":
-                if (action.resetModels) {
-                    draft.modelEpoch += 1;
-                }
                 beginTurn();
                 break;
             case "error":
@@ -171,7 +166,13 @@ function reducer(state: State, action: Action): State {
     });
 }
 
-function useModels(dispatch: Dispatch<Action>, settings: ConversationSettings, epoch: number, enabled: boolean): Models | null {
+type ModelSet = {
+    prompt: (participant: AiParticipant, text: string, signal: AbortSignal) => Promise<string>;
+    resetIfNeeded: (turnNumber: number) => void;
+};
+
+function useModels(dispatch: Dispatch<Action>, settings: ConversationSettings, enabled: boolean): ModelSet | null {
+    const [epoch, setEpoch] = useState(0);
     const [ready, setReady] = useState<{ models: Models; epoch: number } | null>(null);
 
     useEffect(() => {
@@ -181,53 +182,100 @@ function useModels(dispatch: Dispatch<Action>, settings: ConversationSettings, e
         const controller = new AbortController();
         const { signal } = controller;
         const isFirstEpoch = epoch === 0;
-        let created: Models | null = null;
-        if (isFirstEpoch) {
-            dispatch({ type: "joining" });
-        }
-        createModels(settings, signal, (participant) => {
+        const created = new Set<LanguageModel>();
+        const destroyCreated = () => {
+            for (const model of created) model.destroy();
+            created.clear();
+        };
+        const createModel = async (participant: AiParticipant, persona: string): Promise<LanguageModel> => {
+            const model = await LanguageModel.create({
+                ...modelOptions,
+                signal,
+                initialPrompts: [
+                    {
+                        role: "system",
+                        content: [
+                            "あなたは継続対話に参加する会話相手です。",
+                            `あなたの名前は ${participant} です。`,
+                            `人格: ${persona}`,
+                            "返答は日本語で、短めの自然なおしゃべりにしてください。",
+                            "相手の直前の発言をやさしく拾い、感想や小さな質問を添えて会話を続けてください。",
+                            "討論や結論づけより、和気あいあいとした雑談の流れを優先してください。",
+                            "相手から質問されたら、次の返答ではまず短く答えてください。",
+                            "質問で終えるのは2回に1回までにしてください。",
+                            "相手が明示的に話題にしない限り、AI、データ、解析、生成モデル、技術ニュースの話は避けてください。",
+                            "日常の出来事、食べ物、散歩、音楽、読書、天気、家事、趣味のような身近な話題を中心にしてください。",
+                            "絵文字は使わないでください。",
+                            "直前の会話と同じ表現や比喩を繰り返さないでください。",
+                        ].join("\n"),
+                    },
+                ],
+            });
+            if (signal.aborted) {
+                model.destroy();
+                signal.throwIfAborted();
+            }
+            created.add(model);
             if (isFirstEpoch) {
                 dispatch({ type: "joined", participant });
             }
-        }).then((models) => {
-            if (signal.aborted) {
-                destroyModels(models);
-                return;
+            return model;
+        };
+
+        if (isFirstEpoch) {
+            dispatch({ type: "joining" });
+        }
+        Promise.all([createModel("A", settings.participantA), createModel("B", settings.participantB)]).then(([A, B]) => {
+            if (!signal.aborted) {
+                setReady({ models: { A, B }, epoch });
             }
-            created = models;
-            setReady({ models, epoch });
         }, (error) => {
+            destroyCreated();
             if (!signal.aborted) {
                 dispatch({ type: "modelsFailed", error });
             }
         });
         return () => {
             controller.abort();
-            destroyModels(created);
+            destroyCreated();
             setReady(null);
         };
     }, [dispatch, enabled, settings, epoch]);
 
-    return ready?.epoch === epoch ? ready.models : null;
+    const models = ready?.epoch === epoch ? ready.models : null;
+
+    return useMemo(() => models && {
+        prompt: (participant, text, signal) => models[participant].prompt(text, { signal }),
+        // Called after each turn, so the next turn starts on fresh models.
+        resetIfNeeded: (turnNumber) => {
+            const isTurnLimitReached = turnNumber % maxTurnsBeforeModelReset === 0;
+            const isContextNearlyFull = Object.values(models).some((model) =>
+                model.contextWindow > 0 && model.contextUsage / model.contextWindow >= maxContextUsageRatio);
+            if (isTurnLimitReached || isContextNearlyFull) {
+                setEpoch((current) => current + 1);
+            }
+        },
+    }, [models]);
 }
 
 export function useConversation(): UseConversationResult {
     const [state, dispatch] = useReducer(reducer, initialState, (state) => reducer(state, { type: "start" }));
     const availability = useAvailability(modelOptions);
-    const { turn, settings, modelEpoch } = state;
+    const { turn, settings } = state;
     const isUnavailable = availability.kind === "unsupported" || availability.kind === "unavailable" || availability.kind === "error";
-    const models = useModels(dispatch, settings, modelEpoch, availability.kind !== "checking" && !isUnavailable);
+    const models = useModels(dispatch, settings, availability.kind !== "checking" && !isUnavailable);
 
-    const runTurn = useCallback(async (currentTurn: Turn, models: Models, controller: AbortController): Promise<void> => {
+    const runTurn = useCallback(async (currentTurn: Turn, models: ModelSet, controller: AbortController): Promise<void> => {
         const { signal } = controller;
         try {
             dispatch({ type: "generating", turn: currentTurn });
-            const output = await models[currentTurn.participant].prompt(currentTurn.prompt, { signal });
+            const output = await models.prompt(currentTurn.participant, currentTurn.prompt, signal);
             signal.throwIfAborted();
             dispatch({ type: "completed", turn: currentTurn, text: output.trim() });
             await sleep(currentTurn.settings.delayMs, signal);
             signal.throwIfAborted();
-            dispatch({ type: "next", turn: currentTurn, resetModels: shouldResetModels(currentTurn.number, models) });
+            models.resetIfNeeded(currentTurn.number);
+            dispatch({ type: "next", turn: currentTurn });
         } catch (error) {
             if (!signal.aborted) {
                 controller.abort();
@@ -306,74 +354,3 @@ const maxTurnsBeforeModelReset = 16;
 const maxContextUsageRatio = 0.65;
 
 type Models = Record<AiParticipant, LanguageModel>;
-
-async function createModels(
-    settings: ConversationSettings,
-    signal: AbortSignal,
-    onCreated: (participant: AiParticipant) => void,
-): Promise<Models> {
-    const created = new Set<LanguageModel>();
-    const destroy = () => {
-        for (const model of created) model.destroy();
-        created.clear();
-    };
-    let failed = false;
-    signal.addEventListener("abort", destroy, { once: true });
-    const create = async (participant: AiParticipant, persona: string): Promise<LanguageModel> => {
-        const model = await LanguageModel.create({
-            ...modelOptions,
-            signal,
-            initialPrompts: [
-                {
-                    role: "system",
-                    content: [
-                        "あなたは継続対話に参加する会話相手です。",
-                        `あなたの名前は ${participant} です。`,
-                        `人格: ${persona}`,
-                        "返答は日本語で、短めの自然なおしゃべりにしてください。",
-                        "相手の直前の発言をやさしく拾い、感想や小さな質問を添えて会話を続けてください。",
-                        "討論や結論づけより、和気あいあいとした雑談の流れを優先してください。",
-                        "相手から質問されたら、次の返答ではまず短く答えてください。",
-                        "質問で終えるのは2回に1回までにしてください。",
-                        "相手が明示的に話題にしない限り、AI、データ、解析、生成モデル、技術ニュースの話は避けてください。",
-                        "日常の出来事、食べ物、散歩、音楽、読書、天気、家事、趣味のような身近な話題を中心にしてください。",
-                        "絵文字は使わないでください。",
-                        "直前の会話と同じ表現や比喩を繰り返さないでください。",
-                    ].join("\n"),
-                },
-            ],
-        });
-        if (signal.aborted || failed) {
-            model.destroy();
-            throw new DOMException("Model creation cancelled", "AbortError");
-        }
-        created.add(model);
-        onCreated(participant);
-        return model;
-    };
-    try {
-        signal.throwIfAborted();
-        const [A, B] = await Promise.all([create("A", settings.participantA), create("B", settings.participantB)]);
-        signal.throwIfAborted();
-        return { A, B };
-    } catch (error) {
-        failed = true;
-        destroy();
-        throw error;
-    } finally {
-        signal.removeEventListener("abort", destroy);
-    }
-}
-
-// Checked after each turn, so the next turn starts on fresh models.
-function shouldResetModels(turnNumber: number, models: Models): boolean {
-    return turnNumber % maxTurnsBeforeModelReset === 0 ||
-        Object.values(models).some((model) =>
-            model.contextWindow > 0 && model.contextUsage / model.contextWindow >= maxContextUsageRatio);
-}
-
-function destroyModels(models: Models | null): void {
-    if (models) {
-        for (const model of Object.values(models)) model.destroy();
-    }
-}

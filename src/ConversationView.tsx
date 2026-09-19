@@ -29,6 +29,10 @@ const listStyles = css({
     padding: "24px",
     overflow: "auto",
     listStyle: "none",
+    scrollbarWidth: "none",
+    "&::-webkit-scrollbar": {
+        display: "none",
+    },
 });
 
 const typingStyles = css({

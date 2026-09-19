@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef } from "preact/hooks";
 import { useAvailability } from "./useAvailability";
+import { sleep } from "./utils";
 import type { AvailabilityResult, AvailabilityState } from "./useAvailability";
 
 export type Status =
@@ -69,6 +70,10 @@ const initialState: State = {
 function reducer(state: State, action: Action): State {
     function beginTurn(): State {
         const agent: AgentName = state.nextTurn % 2 === 1 ? "A" : "B";
+        const recentMessages = state.history
+            .slice(-maxRecentMessages)
+            .map((message) => `Agent ${message.agent}: ${message.text}`)
+            .join("\n");
         // Freeze the inputs for this turn; settings edits apply when the next turn begins.
         return {
             ...state,
@@ -78,7 +83,18 @@ function reducer(state: State, action: Action): State {
                 number: state.nextTurn,
                 agent,
                 settings: state.settings,
-                prompt: buildPrompt(agent, state.settings, state.history),
+                prompt: [
+                    `テーマ: ${state.settings.topic}`,
+                    `あなたは Agent ${agent} です。次は Agent ${agent === "A" ? "B" : "A"} に返答してください。`,
+                    `最大 ${state.settings.maxLength} 文字。`,
+                    "自然な雑談として、気軽で親しみやすい口調を保ってください。",
+                    "2〜4文で、相手の質問に答えることを優先してください。",
+                    "相手が出していない技術・AI・データ分析の話題を新しく始めないでください。",
+                    "直近の会話に未完了の話題がある場合は、その話題を続けてください。",
+                    "急に新しい近況を始めず、相手の最後の発言に直接返してください。",
+                    "直近の会話:",
+                    recentMessages || "まだ会話は始まっていません。",
+                ].join("\n\n"),
                 replaceModels: state.turn !== null && (
                     state.turn.settings.agentA !== state.settings.agentA ||
                     state.turn.settings.agentB !== state.settings.agentB
@@ -170,7 +186,12 @@ export function useConversation(): UseConversationResult {
             if (currentTurn.replaceModels) {
                 releaseModels();
             }
-            if (modelsRef.current && shouldResetModels(modelsRef.current, currentTurn.number - 1)) {
+            const shouldResetModels = modelsRef.current !== null && (
+                (currentTurn.number > 1 && (currentTurn.number - 1) % maxTurnsBeforeModelReset === 0) ||
+                Object.values(modelsRef.current).some((model) =>
+                    model.contextWindow > 0 && model.contextUsage / model.contextWindow >= maxContextUsageRatio)
+            );
+            if (shouldResetModels) {
                 releaseModels();
                 dispatch({ type: "reset", turn: currentTurn });
             }
@@ -365,45 +386,6 @@ function destroyModels(models: Models | null): void {
     if (models) {
         for (const model of Object.values(models)) model.destroy();
     }
-}
-
-function buildPrompt(agent: AgentName, currentSettings: ConversationSettings, history: PromptMessage[]): string {
-    const otherAgent: AgentName = agent === "A" ? "B" : "A";
-    const recentMessages = history
-        .slice(-maxRecentMessages)
-        .map((message) => `Agent ${message.agent}: ${message.text}`)
-        .join("\n");
-
-    return [
-        `テーマ: ${currentSettings.topic}`,
-        `あなたは Agent ${agent} です。次は Agent ${otherAgent} に返答してください。`,
-        `最大 ${currentSettings.maxLength} 文字。`,
-        "自然な雑談として、気軽で親しみやすい口調を保ってください。",
-        "2〜4文で、相手の質問に答えることを優先してください。",
-        "相手が出していない技術・AI・データ分析の話題を新しく始めないでください。",
-        "直近の会話に未完了の話題がある場合は、その話題を続けてください。",
-        "急に新しい近況を始めず、相手の最後の発言に直接返してください。",
-        "直近の会話:",
-        recentMessages || "まだ会話は始まっていません。",
-    ].join("\n\n");
-}
-
-function shouldResetModels(models: Record<AgentName, LanguageModel>, turn: number): boolean {
-    return (turn > 0 && turn % maxTurnsBeforeModelReset === 0) || Object.values(models).some((model) =>
-        model.contextWindow > 0 && model.contextUsage / model.contextWindow >= maxContextUsageRatio);
-}
-
-function sleep(ms: number, signal: AbortSignal): Promise<void> {
-    return new Promise((resolve) => {
-        const finish = () => {
-            clearTimeout(timer);
-            signal.removeEventListener("abort", finish);
-            resolve();
-        };
-        const timer = setTimeout(finish, ms);
-        signal.addEventListener("abort", finish, { once: true });
-        if (signal.aborted) finish();
-    });
 }
 
 async function generateResponse(

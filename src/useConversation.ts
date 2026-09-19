@@ -15,6 +15,7 @@ export type UseConversationResult = {
     messages: DisplayMessage[];
     typingName: string | null;
     toggle: () => void;
+    sendHumanMessage: (text: string) => void;
 };
 
 type Turn = {
@@ -37,6 +38,7 @@ type State = {
 
 type Action =
     | { type: "toggle" }
+    | { type: "human"; text: string }
     | { type: "progress"; turn: Turn; progress: number }
     | { type: "unavailable"; turn: Turn; availability: AvailabilityResult }
     | { type: "reset"; turn: Turn }
@@ -65,9 +67,9 @@ const initialState: State = {
 function reducer(state: State, action: Action): State {
     function beginTurn(): State {
         const agent: AgentName = state.nextTurn % 2 === 1 ? "A" : "B";
-        const recentMessages = state.history
-            .slice(-maxRecentMessages)
-            .map((message) => `Agent ${message.agent}: ${message.text}`)
+        const recentHistory = state.history.slice(-maxRecentMessages);
+        const recentMessages = recentHistory
+            .map((message) => `${message.speaker === "human" ? "ユーザー" : `Agent ${message.speaker}`}: ${message.text}`)
             .join("\n");
         // Freeze the inputs for this turn.
         return {
@@ -86,6 +88,9 @@ function reducer(state: State, action: Action): State {
                     "2〜4文で、相手の質問に答えることを優先してください。",
                     "相手が出していない技術・AI・データ分析の話題を新しく始めないでください。",
                     "直近の会話に未完了の話題がある場合は、その話題を続けてください。",
+                    ...(recentHistory.at(-1)?.speaker === "human"
+                        ? ["人間のユーザーが会話に参加しています。ユーザーの直前の発言に、まず答えてください。"]
+                        : []),
                     "急に新しい近況を始めず、相手の最後の発言に直接返してください。",
                     "直近の会話:",
                     recentMessages || "まだ会話は始まっていません。",
@@ -110,6 +115,12 @@ function reducer(state: State, action: Action): State {
     switch (action.type) {
         case "toggle":
             return state.turn ? finish() : beginTurn();
+        case "human":
+            return {
+                ...state,
+                messages: [...state.messages, { id: `human-${state.messages.length}`, kind: "human", text: action.text }],
+                history: [...state.history, { speaker: "human" as const, text: action.text }].slice(-maxRecentMessages),
+            };
         case "progress":
             return state.phase === "preparing"
                 ? { ...state, status: { kind: "downloading", progress: action.progress } }
@@ -121,7 +132,7 @@ function reducer(state: State, action: Action): State {
                 ...state,
                 status: { kind: "resetting" },
                 messages: [...state.messages, {
-                    id: -action.turn.number, kind: "system",
+                    id: `system-${action.turn.number}`, kind: "system",
                     text: `Turn ${action.turn.number - 1}。ふたりは少し深呼吸して、直近の話の余韻から会話を続けます。`,
                 }],
             };
@@ -132,10 +143,10 @@ function reducer(state: State, action: Action): State {
                 ...state,
                 phase: "waiting",
                 messages: [...state.messages, {
-                    id: action.turn.number, kind: "agent", agent: action.turn.agent,
+                    id: `agent-${action.turn.number}`, kind: "agent", agent: action.turn.agent,
                     turn: action.turn.number, text: action.text || "(空の応答)",
                 }],
-                history: [...state.history, { agent: action.turn.agent, text: action.text }].slice(-maxRecentMessages),
+                history: [...state.history, { speaker: action.turn.agent, text: action.text }].slice(-maxRecentMessages),
             };
         case "next":
             return beginTurn();
@@ -228,12 +239,17 @@ export function useConversation(): UseConversationResult {
         dispatch({ type: "toggle" });
     }, [cancel]);
 
+    const sendHumanMessage = useCallback((text: string) => {
+        dispatch({ type: "human", text });
+    }, []);
+
     return {
         status: state.status ?? { kind: "availability", value: availability },
         running: state.phase !== "idle",
         messages: state.messages,
         typingName: state.phase === "generating" && state.turn ? `Agent ${state.turn.agent}` : null,
         toggle,
+        sendHumanMessage,
     };
 }
 
@@ -248,7 +264,7 @@ export type ConversationSettings = {
 };
 
 export type AgentDisplayMessage = {
-    id: number;
+    id: string;
     kind: "agent";
     agent: AgentName;
     text: string;
@@ -256,15 +272,21 @@ export type AgentDisplayMessage = {
 };
 
 export type SystemDisplayMessage = {
-    id: number;
+    id: string;
     kind: "system";
     text: string;
 };
 
-export type DisplayMessage = AgentDisplayMessage | SystemDisplayMessage;
+export type HumanDisplayMessage = {
+    id: string;
+    kind: "human";
+    text: string;
+};
+
+export type DisplayMessage = AgentDisplayMessage | SystemDisplayMessage | HumanDisplayMessage;
 
 type PromptMessage = {
-    agent: AgentName;
+    speaker: AgentName | "human";
     text: string;
 };
 

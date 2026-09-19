@@ -3,18 +3,20 @@ import { useRef, useState } from "preact/hooks";
 import { css } from "../styled-system/css";
 import { token } from "../styled-system/tokens";
 import { Message } from "./Message";
+import { MessageComposer } from "./MessageComposer";
 import type { DisplayMessage } from "./useConversation";
 
 type ConversationViewProps = {
     messages: DisplayMessage[];
     typingName: string | null;
     toolbar: ComponentChildren;
+    onSend: (text: string) => void;
 };
 
 const shellStyles = css({
     minHeight: 0,
     display: "grid",
-    gridTemplateRows: "auto minmax(0, 1fr) auto",
+    gridTemplateRows: "auto minmax(0, 1fr) auto auto",
     minWidth: 0,
 });
 
@@ -42,7 +44,7 @@ const topFadeStyles = css({
     maskImage: `linear-gradient(to bottom, transparent, ${token("colors.panel")} 48px)`,
 });
 
-export function ConversationView({ messages, typingName, toolbar }: ConversationViewProps) {
+export function ConversationView({ messages, typingName, toolbar, onSend }: ConversationViewProps) {
     const [isScrolled, setIsScrolled] = useState(false);
     const isStickyRef = useRef(true);
     const previousScrollTopRef = useRef(0);
@@ -76,6 +78,12 @@ export function ConversationView({ messages, typingName, toolbar }: Conversation
             <p className={typingStyles} aria-live="polite">
                 {typingName && `${typingName} が入力しています…`}
             </p>
+            <MessageComposer
+                onSend={(text) => {
+                    isStickyRef.current = true;
+                    onSend(text);
+                }}
+            />
         </section>
     );
 }

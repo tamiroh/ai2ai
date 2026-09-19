@@ -40,6 +40,7 @@ export default defineConfig({
                     danger: { value: "#b3261e" },
                     agentA: { value: "#0b6b5c" },
                     agentB: { value: "#b45309" },
+                    humanBubble: { value: "#b9efb0" },
                     accentStrong: { value: "color-mix(in srgb, {colors.accent} 75%, {colors.ink})" },
                     focusRing: { value: "color-mix(in srgb, {colors.accent} 14%, transparent)" },
                 },

@@ -39,6 +39,32 @@ const bodyStyles = css({
     minWidth: 0,
 });
 
+const humanItemStyles = css({
+    alignSelf: "flex-end",
+    width: "min(620px, 88%)",
+    "@media (max-width: 860px)": {
+        width: "100%",
+    },
+});
+
+const humanBubbleStyles = css({
+    position: "relative",
+    borderRadius: "16px",
+    padding: "14px 16px",
+    background: "humanBubble",
+    color: "ink",
+    _before: {
+        content: "''",
+        position: "absolute",
+        top: "16px",
+        right: "-5px",
+        width: "12px",
+        height: "12px",
+        background: "inherit",
+        transform: "rotate(45deg)",
+    },
+});
+
 const nameStyles = css({
     padding: "0 4px",
     color: "muted",
@@ -100,6 +126,16 @@ export function Message({ message }: MessageProps) {
                     <span>Pause</span>
                 </div>
                 <p className={`${textStyles} ${textCenteredStyles}`}>{message.text}</p>
+            </li>
+        );
+    }
+
+    if (message.kind === "human") {
+        return (
+            <li className={humanItemStyles}>
+                <div className={humanBubbleStyles}>
+                    <p className={textStyles}>{message.text}</p>
+                </div>
             </li>
         );
     }

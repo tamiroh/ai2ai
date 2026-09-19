@@ -14,8 +14,6 @@ export type UseConversationResult = {
     running: boolean;
     messages: DisplayMessage[];
     typingName: string | null;
-    settings: ConversationSettings;
-    updateSettings: (patch: Partial<ConversationSettings>) => void;
     toggle: () => void;
     clear: () => void;
 };
@@ -39,7 +37,6 @@ type State = {
 };
 
 type Action =
-    | { type: "settings"; patch: Partial<ConversationSettings> }
     | { type: "toggle" }
     | { type: "clear" }
     | { type: "progress"; turn: Turn; progress: number }
@@ -74,7 +71,7 @@ function reducer(state: State, action: Action): State {
             .slice(-maxRecentMessages)
             .map((message) => `Agent ${message.agent}: ${message.text}`)
             .join("\n");
-        // Freeze the inputs for this turn; settings edits apply when the next turn begins.
+        // Freeze the inputs for this turn.
         return {
             ...state,
             phase: "preparing",
@@ -113,8 +110,6 @@ function reducer(state: State, action: Action): State {
         return state;
     }
     switch (action.type) {
-        case "settings":
-            return { ...state, settings: { ...state.settings, ...action.patch } };
         case "toggle":
             return state.turn ? finish() : beginTurn();
         case "clear":
@@ -242,17 +237,11 @@ export function useConversation(): UseConversationResult {
         dispatch({ type: "clear" });
     }, [cancel]);
 
-    const updateSettings = useCallback((patch: Partial<ConversationSettings>) => {
-        dispatch({ type: "settings", patch });
-    }, []);
-
     return {
         status: state.status ?? { kind: "availability", value: availability },
         running: state.phase !== "idle",
         messages: state.messages,
         typingName: state.phase === "generating" && state.turn ? `Agent ${state.turn.agent}` : null,
-        settings: state.settings,
-        updateSettings,
         toggle,
         clear,
     };

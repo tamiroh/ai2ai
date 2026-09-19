@@ -18,15 +18,13 @@ const appStyles = css({
 });
 
 export function App() {
-    const { status, running, messages, typingName, settings, updateSettings, toggle, clear } = useConversation();
+    const { status, running, messages, typingName, toggle, clear } = useConversation();
 
     return (
         <main className={appStyles}>
             <ControlPanel
                 status={status}
                 running={running}
-                settings={settings}
-                onSettingsChange={updateSettings}
                 onToggle={toggle}
                 onClear={clear}
             />

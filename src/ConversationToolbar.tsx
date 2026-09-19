@@ -1,44 +1,32 @@
 import { css } from "../styled-system/css";
 import type { Status } from "./useConversation";
 
-type ControlPanelProps = {
+type ConversationToolbarProps = {
     status: Status;
     running: boolean;
     onToggle: () => void;
     onClear: () => void;
 };
 
-const panelSectionStyles = css({
-    minHeight: 0,
-    background: "panel",
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: "line",
-    boxShadow: "panel",
+const toolbarStyles = css({
     display: "flex",
-    flexDirection: "column",
-    gap: "28px",
-    overflow: "auto",
-    borderRadius: "8px",
-    padding: "22px",
-});
-
-const bottomStyles = css({
-    display: "grid",
-    gap: "12px",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "16px",
+    padding: "12px 24px",
 });
 
 const actionsStyles = css({
-    display: "grid",
+    display: "flex",
+    flexShrink: 0,
     gap: "12px",
-    gridTemplateColumns: "1fr 1fr",
-    "@media (max-width: 860px)": {
-        gridTemplateColumns: "1fr",
-    },
+    marginLeft: "auto",
 });
 
 const buttonBaseStyles = {
     minHeight: "44px",
+    minWidth: "96px",
+    padding: "0 20px",
     borderWidth: "1px",
     borderStyle: "solid",
     borderColor: "line",
@@ -97,36 +85,34 @@ const statusErrorStyles = css({
     overflowWrap: "anywhere",
 });
 
-export function ControlPanel({ status, running, onToggle, onClear }: ControlPanelProps) {
+export function ConversationToolbar({ status, running, onToggle, onClear }: ConversationToolbarProps) {
     const displayStatus = describeStatus(status);
     const isBusy = displayStatus.kind === "busy";
     const buttonLabel = isBusy ? "準備中" : running ? "停止" : "開始";
     const buttonTitle = displayStatus.title ? `${displayStatus.title}：${displayStatus.detail}` : undefined;
 
     return (
-        <section className={panelSectionStyles} aria-label="Conversation controls">
-            <div className={bottomStyles}>
-                <div className={actionsStyles}>
-                    <button
-                        className={`${startButtonStyles} ${isBusy ? busyButtonStyles : ""}`}
-                        type="button"
-                        title={buttonTitle}
-                        aria-label={running ? "停止" : "開始"}
-                        onClick={onToggle}
-                    >
-                        {buttonLabel}
-                    </button>
-                    <button className={clearButtonStyles} type="button" onClick={onClear}>
-                        消去
-                    </button>
-                </div>
-                {displayStatus.kind === "error" && (
-                    <p className={statusErrorStyles} role="alert">
-                        {displayStatus.title}：{displayStatus.detail}
-                    </p>
-                )}
+        <div className={toolbarStyles}>
+            {displayStatus.kind === "error" && (
+                <p className={statusErrorStyles} role="alert">
+                    {displayStatus.title}：{displayStatus.detail}
+                </p>
+            )}
+            <div className={actionsStyles}>
+                <button
+                    className={`${startButtonStyles} ${isBusy ? busyButtonStyles : ""}`}
+                    type="button"
+                    title={buttonTitle}
+                    aria-label={running ? "停止" : "開始"}
+                    onClick={onToggle}
+                >
+                    {buttonLabel}
+                </button>
+                <button className={clearButtonStyles} type="button" onClick={onClear}>
+                    消去
+                </button>
             </div>
-        </section>
+        </div>
     );
 }
 

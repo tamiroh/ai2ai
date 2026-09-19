@@ -1,3 +1,4 @@
+import type { ComponentChildren } from "preact";
 import { useRef, useState } from "preact/hooks";
 import { css } from "../styled-system/css";
 import { token } from "../styled-system/tokens";
@@ -7,21 +8,14 @@ import type { DisplayMessage } from "./useConversation";
 type ConversationViewProps = {
     messages: DisplayMessage[];
     typingName: string | null;
+    toolbar: ComponentChildren;
 };
 
 const shellStyles = css({
     minHeight: 0,
-    background: "panel",
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: "line",
-    boxShadow: "panel",
-    position: "relative",
     display: "grid",
-    gridTemplateRows: "minmax(0, 1fr) auto",
+    gridTemplateRows: "auto minmax(0, 1fr) auto",
     minWidth: 0,
-    borderRadius: "8px",
-    overflow: "hidden",
 });
 
 const listStyles = css({
@@ -48,7 +42,7 @@ const topFadeStyles = css({
     maskImage: `linear-gradient(to bottom, transparent, ${token("colors.panel")} 48px)`,
 });
 
-export function ConversationView({ messages, typingName }: ConversationViewProps) {
+export function ConversationView({ messages, typingName, toolbar }: ConversationViewProps) {
     const [isScrolled, setIsScrolled] = useState(false);
     const isStickyRef = useRef(true);
     const previousScrollTopRef = useRef(0);
@@ -73,6 +67,7 @@ export function ConversationView({ messages, typingName }: ConversationViewProps
 
     return (
         <section className={shellStyles} aria-label="AI conversation">
+            {toolbar}
             <ol className={`${listStyles} ${isScrolled ? topFadeStyles : ""}`} ref={followBottom} onScroll={handleScroll}>
                 {messages.map((message) => (
                     <Message key={message.id} message={message} />

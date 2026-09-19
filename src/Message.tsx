@@ -2,13 +2,13 @@ import { css } from "../styled-system/css";
 import { token } from "../styled-system/tokens";
 import { Avatar } from "./Avatar";
 import type { AvatarColor } from "./Avatar";
-import type { Participant, DisplayMessage } from "./useConversation";
+import type { AiParticipant, DisplayMessage } from "./useConversation";
 
 type MessageProps = {
     message: DisplayMessage;
 };
 
-const participantAvatarColors: Record<Participant, AvatarColor> = {
+const participantAvatarColors: Record<AiParticipant, AvatarColor> = {
     A: "teal",
     B: "amber",
 };

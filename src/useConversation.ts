@@ -17,7 +17,7 @@ export type UseConversationResult = {
 
 type Turn = {
     number: number;
-    participant: Participant;
+    participant: AiParticipant;
     settings: ConversationSettings;
     prompt: string;
     replaceModels: boolean;
@@ -38,7 +38,7 @@ type Action =
     | { type: "human"; text: string }
     | { type: "unavailable"; turn: Turn; availability: AvailabilityResult }
     | { type: "joining"; turn: Turn }
-    | { type: "joined"; turn: Turn; participant: Participant }
+    | { type: "joined"; turn: Turn; participant: AiParticipant }
     | { type: "generating"; turn: Turn }
     | { type: "completed"; turn: Turn; text: string }
     | { type: "next"; turn: Turn }
@@ -63,7 +63,7 @@ const initialState: State = {
 
 function reducer(state: State, action: Action): State {
     function beginTurn(): State {
-        const participant: Participant = state.nextTurn % 2 === 1 ? "A" : "B";
+        const participant: AiParticipant = state.nextTurn % 2 === 1 ? "A" : "B";
         const recentHistory = state.history.slice(-maxRecentMessages);
         const recentMessages = recentHistory
             .map((message) => `${message.speaker === "human" ? "ユーザー" : message.speaker}: ${message.text}`)
@@ -141,7 +141,7 @@ function reducer(state: State, action: Action): State {
                 ...state,
                 phase: "waiting",
                 messages: [...state.messages, {
-                    id: `participant-${action.turn.number}`, kind: "participant", participant: action.turn.participant,
+                    id: `ai-${action.turn.number}`, kind: "ai", participant: action.turn.participant,
                     turn: action.turn.number, text: action.text || "(空の応答)",
                 }],
                 history: [...state.history, { speaker: action.turn.participant, text: action.text }].slice(-maxRecentMessages),
@@ -236,7 +236,9 @@ export function useConversation(): UseConversationResult {
     };
 }
 
-export type Participant = "A" | "B";
+export type Participant = "A" | "B" | "human";
+
+export type AiParticipant = Exclude<Participant, "human">;
 
 export type ConversationSettings = {
     topic: string;
@@ -246,10 +248,10 @@ export type ConversationSettings = {
     maxLength: number;
 };
 
-export type ParticipantDisplayMessage = {
+export type AiDisplayMessage = {
     id: string;
-    kind: "participant";
-    participant: Participant;
+    kind: "ai";
+    participant: AiParticipant;
     text: string;
     turn: number;
 };
@@ -266,10 +268,10 @@ export type HumanDisplayMessage = {
     text: string;
 };
 
-export type DisplayMessage = ParticipantDisplayMessage | SystemDisplayMessage | HumanDisplayMessage;
+export type DisplayMessage = AiDisplayMessage | SystemDisplayMessage | HumanDisplayMessage;
 
 type PromptMessage = {
-    speaker: Participant | "human";
+    speaker: Participant;
     text: string;
 };
 
@@ -282,12 +284,12 @@ const maxRecentMessages = 8;
 const maxTurnsBeforeModelReset = 16;
 const maxContextUsageRatio = 0.65;
 
-type Models = Record<Participant, LanguageModel>;
+type Models = Record<AiParticipant, LanguageModel>;
 
 async function createModels(
     settings: ConversationSettings,
     signal: AbortSignal,
-    onCreated: (participant: Participant) => void,
+    onCreated: (participant: AiParticipant) => void,
 ): Promise<Models> {
     const created = new Set<LanguageModel>();
     const destroy = () => {
@@ -296,7 +298,7 @@ async function createModels(
     };
     let failed = false;
     signal.addEventListener("abort", destroy, { once: true });
-    const create = async (participant: Participant, persona: string): Promise<LanguageModel> => {
+    const create = async (participant: AiParticipant, persona: string): Promise<LanguageModel> => {
         const model = await LanguageModel.create({
             ...modelOptions,
             signal,

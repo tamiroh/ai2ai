@@ -13,6 +13,7 @@ export type UseConversationResult = {
     status: Status;
     running: boolean;
     messages: DisplayMessage[];
+    typingName: string | null;
     settings: ConversationSettings;
     updateSettings: (patch: Partial<ConversationSettings>) => void;
     toggle: () => void;
@@ -45,7 +46,6 @@ type Action =
     | { type: "unavailable"; turn: Turn; availability: AvailabilityResult }
     | { type: "reset"; turn: Turn }
     | { type: "generating"; turn: Turn }
-    | { type: "chunk"; turn: Turn; text: string }
     | { type: "completed"; turn: Turn; text: string }
     | { type: "next"; turn: Turn }
     | { type: "error"; turn: Turn; error: unknown };
@@ -105,12 +105,7 @@ function reducer(state: State, action: Action): State {
     }
 
     function finish(status = initialStatus): State {
-        return {
-            ...state, phase: "idle", turn: null, status,
-            messages: state.messages.map((message) => message.kind === "agent" && message.pending
-                ? { ...message, pending: false, text: message.text || (status.kind === "error" ? "生成に失敗しました。" : "停止しました。") }
-                : message),
-        };
+        return { ...state, phase: "idle", turn: null, status };
     }
 
     // A cleared or stopped turn may still resolve after the next one starts.
@@ -140,24 +135,16 @@ function reducer(state: State, action: Action): State {
                 }],
             };
         case "generating":
-            return {
-                ...state, phase: "generating", status: { kind: "running" },
-                messages: [...state.messages, {
-                    id: action.turn.number, kind: "agent", agent: action.turn.agent,
-                    turn: action.turn.number, text: "", pending: true,
-                }],
-            };
-        case "chunk":
+            return { ...state, phase: "generating", status: { kind: "running" } };
         case "completed":
             return {
                 ...state,
-                phase: action.type === "completed" ? "waiting" : state.phase,
-                messages: state.messages.map((message) => message.kind === "agent" && message.id === action.turn.number
-                    ? { ...message, text: action.text || (action.type === "completed" ? "(空の応答)" : ""), pending: action.type !== "completed" }
-                    : message),
-                history: action.type === "completed"
-                    ? [...state.history, { agent: action.turn.agent, text: action.text }].slice(-maxRecentMessages)
-                    : state.history,
+                phase: "waiting",
+                messages: [...state.messages, {
+                    id: action.turn.number, kind: "agent", agent: action.turn.agent,
+                    turn: action.turn.number, text: action.text || "(空の応答)",
+                }],
+                history: [...state.history, { agent: action.turn.agent, text: action.text }].slice(-maxRecentMessages),
             };
         case "next":
             return beginTurn();
@@ -206,9 +193,7 @@ export function useConversation(): UseConversationResult {
                 modelsRef.current = models;
             }
             dispatch({ type: "generating", turn: currentTurn });
-            const output = await generateResponse(modelsRef.current[currentTurn.agent], currentTurn.prompt, signal, (text) => {
-                dispatch({ type: "chunk", turn: currentTurn, text });
-            });
+            const output = await modelsRef.current[currentTurn.agent].prompt(currentTurn.prompt, { signal });
             signal.throwIfAborted();
             dispatch({ type: "completed", turn: currentTurn, text: output.trim() });
             await sleep(currentTurn.settings.delayMs, signal);
@@ -265,6 +250,7 @@ export function useConversation(): UseConversationResult {
         status: state.status ?? { kind: "availability", value: availability },
         running: state.phase !== "idle",
         messages: state.messages,
+        typingName: state.phase === "generating" && state.turn ? `Agent ${state.turn.agent}` : null,
         settings: state.settings,
         updateSettings,
         toggle,
@@ -288,7 +274,6 @@ export type AgentDisplayMessage = {
     agent: AgentName;
     text: string;
     turn: number;
-    pending: boolean;
 };
 
 export type SystemDisplayMessage = {
@@ -382,28 +367,5 @@ async function createModels(
 function destroyModels(models: Models | null): void {
     if (models) {
         for (const model of Object.values(models)) model.destroy();
-    }
-}
-
-async function generateResponse(
-    model: LanguageModel,
-    prompt: string,
-    signal: AbortSignal,
-    onText: (text: string) => void,
-): Promise<string> {
-    const reader = model.promptStreaming(prompt, { signal }).getReader();
-    let output = "";
-    try {
-        while (true) {
-            const { done, value } = await reader.read();
-            signal.throwIfAborted();
-            if (done) {
-                return output;
-            }
-            output += value;
-            onText(output);
-        }
-    } finally {
-        reader.releaseLock();
     }
 }

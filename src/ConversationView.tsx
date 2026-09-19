@@ -6,6 +6,7 @@ import type { DisplayMessage } from "./useConversation";
 
 type ConversationViewProps = {
     messages: DisplayMessage[];
+    typingName: string | null;
 };
 
 const shellStyles = css({
@@ -17,7 +18,7 @@ const shellStyles = css({
     boxShadow: "panel",
     position: "relative",
     display: "grid",
-    gridTemplateRows: "minmax(0, 1fr)",
+    gridTemplateRows: "minmax(0, 1fr) auto",
     minWidth: 0,
     borderRadius: "8px",
     overflow: "hidden",
@@ -34,11 +35,20 @@ const listStyles = css({
     listStyle: "none",
 });
 
+const typingStyles = css({
+    minHeight: "40px",
+    margin: 0,
+    padding: "0 24px 14px",
+    color: "muted",
+    fontSize: "13px",
+    fontWeight: 700,
+});
+
 const topFadeStyles = css({
     maskImage: `linear-gradient(to bottom, transparent, ${token("colors.panel")} 48px)`,
 });
 
-export function ConversationView({ messages }: ConversationViewProps) {
+export function ConversationView({ messages, typingName }: ConversationViewProps) {
     const [isScrolled, setIsScrolled] = useState(false);
     const isStickyRef = useRef(true);
     const previousScrollTopRef = useRef(0);
@@ -68,6 +78,9 @@ export function ConversationView({ messages }: ConversationViewProps) {
                     <Message key={message.id} message={message} />
                 ))}
             </ol>
+            <p className={typingStyles} aria-live="polite">
+                {typingName && `${typingName} が入力しています…`}
+            </p>
         </section>
     );
 }

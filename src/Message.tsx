@@ -97,7 +97,7 @@ export function Message({ message }: MessageProps) {
         <li className={`${bubbleStyles} ${message.agent === "A" ? agentAStyles : agentBStyles}`}>
             <div className={metaStyles}>
                 <span>Agent {message.agent}</span>
-                <span>{message.pending ? "生成中" : `Turn ${message.turn}`}</span>
+                <span>Turn {message.turn}</span>
             </div>
             <p className={textStyles}>{message.text}</p>
         </li>

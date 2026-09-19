@@ -18,7 +18,7 @@ const appStyles = css({
 });
 
 export function App() {
-    const { status, running, messages, settings, updateSettings, toggle, clear } = useConversation();
+    const { status, running, messages, typingName, settings, updateSettings, toggle, clear } = useConversation();
 
     return (
         <main className={appStyles}>
@@ -30,7 +30,7 @@ export function App() {
                 onToggle={toggle}
                 onClear={clear}
             />
-            <ConversationView messages={messages} />
+            <ConversationView messages={messages} typingName={typingName} />
         </main>
     );
 }

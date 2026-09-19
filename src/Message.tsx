@@ -2,7 +2,8 @@ import { css } from "../styled-system/css";
 import { token } from "../styled-system/tokens";
 import { Avatar } from "./Avatar";
 import type { AvatarColor } from "./Avatar";
-import type { AiParticipant, DisplayMessage } from "./useConversation";
+import type { DisplayMessage } from "./useConversation";
+import type { AiParticipant } from "./useModels";
 
 type MessageProps = {
     message: DisplayMessage;

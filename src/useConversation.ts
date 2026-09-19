@@ -1,8 +1,9 @@
 import { produce } from "immer";
-import { useCallback, useEffect, useMemo, useReducer, useState } from "preact/hooks";
-import type { Dispatch } from "preact/hooks";
+import { useCallback, useEffect, useReducer } from "preact/hooks";
 import { useAvailability } from "./useAvailability";
 import { sleep } from "./utils";
+import { modelOptions, useModels } from "./useModels";
+import type { AiParticipant, ModelEvent, ModelSet } from "./useModels";
 import type { AvailabilityState } from "./useAvailability";
 
 export type Status =
@@ -37,9 +38,7 @@ type State = {
 type Action =
     | { type: "start" }
     | { type: "human"; text: string }
-    | { type: "joining" }
-    | { type: "joined"; participant: AiParticipant }
-    | { type: "modelsFailed"; error: unknown }
+    | ModelEvent
     | { type: "generating"; turn: Turn }
     | { type: "completed"; turn: Turn; text: string }
     | { type: "next"; turn: Turn }
@@ -166,104 +165,15 @@ function reducer(state: State, action: Action): State {
     });
 }
 
-type ModelSet = {
-    prompt: (participant: AiParticipant, text: string, signal: AbortSignal) => Promise<string>;
-    resetIfNeeded: (turnNumber: number) => void;
-};
-
-function useModels(dispatch: Dispatch<Action>, settings: ConversationSettings, enabled: boolean): ModelSet | null {
-    const [epoch, setEpoch] = useState(0);
-    const [ready, setReady] = useState<{ models: Models; epoch: number } | null>(null);
-
-    useEffect(() => {
-        if (!enabled) {
-            return;
-        }
-        const controller = new AbortController();
-        const { signal } = controller;
-        const isFirstEpoch = epoch === 0;
-        const created = new Set<LanguageModel>();
-        const destroyCreated = () => {
-            for (const model of created) model.destroy();
-            created.clear();
-        };
-        const createModel = async (participant: AiParticipant, persona: string): Promise<LanguageModel> => {
-            const model = await LanguageModel.create({
-                ...modelOptions,
-                signal,
-                initialPrompts: [
-                    {
-                        role: "system",
-                        content: [
-                            "あなたは継続対話に参加する会話相手です。",
-                            `あなたの名前は ${participant} です。`,
-                            `人格: ${persona}`,
-                            "返答は日本語で、短めの自然なおしゃべりにしてください。",
-                            "相手の直前の発言をやさしく拾い、感想や小さな質問を添えて会話を続けてください。",
-                            "討論や結論づけより、和気あいあいとした雑談の流れを優先してください。",
-                            "相手から質問されたら、次の返答ではまず短く答えてください。",
-                            "質問で終えるのは2回に1回までにしてください。",
-                            "相手が明示的に話題にしない限り、AI、データ、解析、生成モデル、技術ニュースの話は避けてください。",
-                            "日常の出来事、食べ物、散歩、音楽、読書、天気、家事、趣味のような身近な話題を中心にしてください。",
-                            "絵文字は使わないでください。",
-                            "直前の会話と同じ表現や比喩を繰り返さないでください。",
-                        ].join("\n"),
-                    },
-                ],
-            });
-            if (signal.aborted) {
-                model.destroy();
-                signal.throwIfAborted();
-            }
-            created.add(model);
-            if (isFirstEpoch) {
-                dispatch({ type: "joined", participant });
-            }
-            return model;
-        };
-
-        if (isFirstEpoch) {
-            dispatch({ type: "joining" });
-        }
-        Promise.all([createModel("A", settings.participantA), createModel("B", settings.participantB)]).then(([A, B]) => {
-            if (!signal.aborted) {
-                setReady({ models: { A, B }, epoch });
-            }
-        }, (error) => {
-            destroyCreated();
-            if (!signal.aborted) {
-                dispatch({ type: "modelsFailed", error });
-            }
-        });
-        return () => {
-            controller.abort();
-            destroyCreated();
-            setReady(null);
-        };
-    }, [dispatch, enabled, settings, epoch]);
-
-    const models = ready?.epoch === epoch ? ready.models : null;
-
-    return useMemo(() => models && {
-        prompt: (participant, text, signal) => models[participant].prompt(text, { signal }),
-        // Called after each turn, so the next turn starts on fresh models.
-        resetIfNeeded: (turnNumber) => {
-            const isTurnLimitReached = turnNumber % maxTurnsBeforeModelReset === 0;
-            const isContextNearlyFull = Object.values(models).some((model) =>
-                model.contextWindow > 0 && model.contextUsage / model.contextWindow >= maxContextUsageRatio);
-            if (isTurnLimitReached || isContextNearlyFull) {
-                setEpoch((current) => current + 1);
-            }
-        },
-    }, [models]);
-}
-
 export function useConversation(): UseConversationResult {
     const [state, dispatch] = useReducer(reducer, initialState, (state) => reducer(state, { type: "start" }));
     const availability = useAvailability(modelOptions);
     const { turn, settings } = state;
     const isUnavailable = availability.kind === "unsupported" || availability.kind === "unavailable" || availability.kind === "error";
-    const models = useModels(dispatch, settings, availability.kind !== "checking" && !isUnavailable);
+    const models = useModels(dispatch, availability.kind !== "checking" && !isUnavailable, {
+        A: settings.participantA,
+        B: settings.participantB,
+    });
 
     const runTurn = useCallback(async (currentTurn: Turn, models: ModelSet, controller: AbortController): Promise<void> => {
         const { signal } = controller;
@@ -305,9 +215,7 @@ export function useConversation(): UseConversationResult {
     };
 }
 
-export type Participant = "A" | "B" | "human";
-
-export type AiParticipant = Exclude<Participant, "human">;
+export type Participant = AiParticipant | "human";
 
 export type ConversationSettings = {
     topic: string;
@@ -344,13 +252,4 @@ type PromptMessage = {
     text: string;
 };
 
-const modelOptions: LanguageModelCreateCoreOptions = {
-    expectedInputs: [{ type: "text", languages: ["ja", "en"] }],
-    expectedOutputs: [{ type: "text", languages: ["ja"] }],
-};
-
 const maxRecentMessages = 8;
-const maxTurnsBeforeModelReset = 16;
-const maxContextUsageRatio = 0.65;
-
-type Models = Record<AiParticipant, LanguageModel>;

@@ -20,7 +20,7 @@ const bubbleStyles = css({
     },
 });
 
-const agentAStyles = css({
+const agentStyles = css({
     _before: {
         content: "''",
         position: "absolute",
@@ -32,22 +32,6 @@ const agentAStyles = css({
         transform: "rotate(45deg)",
         borderBottom: `1px solid ${token("colors.line")}`,
         borderLeft: `1px solid ${token("colors.line")}`,
-    },
-});
-
-const agentBStyles = css({
-    alignSelf: "flex-end",
-    _before: {
-        content: "''",
-        position: "absolute",
-        top: "24px",
-        right: "-7px",
-        width: "12px",
-        height: "12px",
-        background: "inherit",
-        transform: "rotate(45deg)",
-        borderTop: `1px solid ${token("colors.line")}`,
-        borderRight: `1px solid ${token("colors.line")}`,
     },
 });
 
@@ -94,7 +78,7 @@ export function Message({ message }: MessageProps) {
     }
 
     return (
-        <li className={`${bubbleStyles} ${message.agent === "A" ? agentAStyles : agentBStyles}`}>
+        <li className={`${bubbleStyles} ${agentStyles}`}>
             <div className={metaStyles}>
                 <span>Agent {message.agent}</span>
                 <span>Turn {message.turn}</span>

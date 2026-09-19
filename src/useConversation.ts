@@ -11,7 +11,6 @@ export type ConversationSettings = {
     topic: string;
     participantA: string;
     participantB: string;
-    delayMs: number;
     maxLength: number;
 };
 
@@ -59,7 +58,7 @@ type PromptMessage = {
 type Turn = {
     number: number;
     participant: AiParticipant;
-    settings: ConversationSettings;
+    precedingLength: number;
     prompt: string;
 };
 
@@ -90,7 +89,6 @@ const initialState: State = {
         topic: "ふたりが、最近ちょっと楽しかったことや気になることを、ゆるく話し続ける。",
         participantA: "穏やかで聞き上手。相手の話に乗りながら、日常の小さな発見を楽しむ。",
         participantB: "明るく好奇心旺盛。少し冗談を交えつつ、会話をあたたかく広げる。",
-        delayMs: 1200,
         maxLength: 220,
     },
     status: null,
@@ -100,6 +98,16 @@ const initialState: State = {
     turn: null,
     nextTurn: 1,
 };
+
+// Time spent reading the preceding message before starting to type.
+function readingDelayMs(precedingLength: number): number {
+    return Math.min(600 + precedingLength * 15, 3000) + Math.random() * 800;
+}
+
+// Time spent typing the reply, proportional to its length.
+function typingDelayMs(length: number): number {
+    return Math.min(Math.max(length * 50, 1000), 6000) * (0.8 + Math.random() * 0.4);
+}
 
 // Freeze the inputs for a turn; the prompt is built from the history at this moment.
 function createTurn(state: State, number: number): Turn {
@@ -111,7 +119,7 @@ function createTurn(state: State, number: number): Turn {
     return {
         number,
         participant,
-        settings: state.settings,
+        precedingLength: recentHistory.at(-1)?.text.length ?? 0,
         prompt: [
             `テーマ: ${state.settings.topic}`,
             `あなたは ${participant} です。`,
@@ -228,10 +236,12 @@ export function useConversation(): UseConversationResult {
         const { signal } = controller;
         const runTurn = async () => {
             try {
+                await sleep(readingDelayMs(turn.precedingLength), signal);
                 dispatch({ type: "generating", turn });
-                const output = await models.prompt(turn.participant, turn.prompt, signal);
-                dispatch({ type: "completed", turn, text: output.trim() });
-                await sleep(turn.settings.delayMs, signal);
+                const startedAt = Date.now();
+                const output = (await models.prompt(turn.participant, turn.prompt, signal)).trim();
+                await sleep(typingDelayMs(output.length) - (Date.now() - startedAt), signal);
+                dispatch({ type: "completed", turn, text: output });
                 models.resetIfNeeded(turn.number);
                 dispatch({ type: "next", turn });
             } catch (error) {

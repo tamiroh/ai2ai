@@ -1,5 +1,5 @@
 import { produce } from "immer";
-import { useCallback, useEffect, useReducer, useRef } from "preact/hooks";
+import { useCallback, useEffect, useReducer, useState } from "preact/hooks";
 import { useAvailability } from "./useAvailability";
 import { sleep } from "./utils";
 import type { AvailabilityResult, AvailabilityState } from "./useAvailability";
@@ -21,7 +21,6 @@ type Turn = {
     participant: AiParticipant;
     settings: ConversationSettings;
     prompt: string;
-    replaceModels: boolean;
 };
 
 type State = {
@@ -32,17 +31,19 @@ type State = {
     phase: "idle" | "preparing" | "generating" | "waiting";
     turn: Turn | null;
     nextTurn: number;
+    modelEpoch: number;
 };
 
 type Action =
     | { type: "start" }
     | { type: "human"; text: string }
-    | { type: "unavailable"; turn: Turn; availability: AvailabilityResult }
-    | { type: "joining"; turn: Turn }
-    | { type: "joined"; turn: Turn; participant: AiParticipant }
+    | { type: "unavailable"; availability: AvailabilityResult }
+    | { type: "joining" }
+    | { type: "joined"; participant: AiParticipant }
+    | { type: "modelsFailed"; error: unknown }
     | { type: "generating"; turn: Turn }
     | { type: "completed"; turn: Turn; text: string }
-    | { type: "next"; turn: Turn }
+    | { type: "next"; turn: Turn; resetModels: boolean }
     | { type: "error"; turn: Turn; error: unknown };
 
 const initialStatus: Status = { kind: "idle" };
@@ -60,6 +61,7 @@ const initialState: State = {
     phase: "idle",
     turn: null,
     nextTurn: 1,
+    modelEpoch: 0,
 };
 
 // Freeze the inputs for a turn; the prompt is built from the history at this moment.
@@ -92,10 +94,6 @@ function createTurn(state: State, number: number): Turn {
             "直近の会話:",
             recentMessages || "まだ会話は始まっていません。",
         ].join("\n\n"),
-        replaceModels: state.turn !== null && (
-            state.turn.settings.participantA !== state.settings.participantA ||
-            state.turn.settings.participantB !== state.settings.participantB
-        ),
     };
 }
 
@@ -136,11 +134,14 @@ function reducer(state: State, action: Action): State {
                 appendHistory({ speaker: "human", text: action.text });
                 // A turn still being prepared or generated was built without this message, so redo it.
                 if (draft.turn && (draft.phase === "preparing" || draft.phase === "generating")) {
-                    draft.turn = { ...createTurn(draft, draft.turn.number), replaceModels: draft.turn.replaceModels };
+                    draft.turn = createTurn(draft, draft.turn.number);
                 }
                 break;
             case "unavailable":
                 finish({ kind: "availability", value: action.availability });
+                break;
+            case "modelsFailed":
+                finish({ kind: "error", error: action.error });
                 break;
             case "joining":
                 addSystemMessage("参加者を待っています…");
@@ -161,6 +162,9 @@ function reducer(state: State, action: Action): State {
                 appendHistory({ speaker: action.turn.participant, text: action.text });
                 break;
             case "next":
+                if (action.resetModels) {
+                    draft.modelEpoch += 1;
+                }
                 beginTurn();
                 break;
             case "error":
@@ -172,74 +176,75 @@ function reducer(state: State, action: Action): State {
 
 export function useConversation(): UseConversationResult {
     const [state, dispatch] = useReducer(reducer, initialState, (state) => reducer(state, { type: "start" }));
-    const modelsRef = useRef<Models | null>(null);
+    const [readyModels, setReadyModels] = useState<{ models: Models; epoch: number } | null>(null);
     const availability = useAvailability(modelOptions);
-    const { turn } = state;
+    const { turn, settings, modelEpoch } = state;
+    const models = readyModels?.epoch === modelEpoch ? readyModels.models : null;
 
-    const releaseModels = useCallback(() => {
-        destroyModels(modelsRef.current);
-        modelsRef.current = null;
-    }, []);
+    useEffect(() => {
+        if (availability.kind === "checking") {
+            return;
+        }
+        if (availability.kind === "unsupported" || availability.kind === "unavailable" || availability.kind === "error") {
+            dispatch({ type: "unavailable", availability });
+            return;
+        }
+        const controller = new AbortController();
+        const { signal } = controller;
+        const isFirstEpoch = modelEpoch === 0;
+        let created: Models | null = null;
+        if (isFirstEpoch) {
+            dispatch({ type: "joining" });
+        }
+        createModels(settings, signal, (participant) => {
+            if (isFirstEpoch) {
+                dispatch({ type: "joined", participant });
+            }
+        }).then((models) => {
+            if (signal.aborted) {
+                destroyModels(models);
+                return;
+            }
+            created = models;
+            setReadyModels({ models, epoch: modelEpoch });
+        }, (error) => {
+            if (!signal.aborted) {
+                dispatch({ type: "modelsFailed", error });
+            }
+        });
+        return () => {
+            controller.abort();
+            destroyModels(created);
+            setReadyModels(null);
+        };
+    }, [availability, settings, modelEpoch]);
 
-    useEffect(() => releaseModels, [releaseModels]);
-
-    const runTurn = useCallback(async (currentTurn: Turn, controller: AbortController): Promise<void> => {
+    const runTurn = useCallback(async (currentTurn: Turn, models: Models, controller: AbortController): Promise<void> => {
         const { signal } = controller;
         try {
-            if (currentTurn.replaceModels) {
-                releaseModels();
-            }
-            const shouldResetModels = modelsRef.current !== null && (
-                (currentTurn.number > 1 && (currentTurn.number - 1) % maxTurnsBeforeModelReset === 0) ||
-                Object.values(modelsRef.current).some((model) =>
-                    model.contextWindow > 0 && model.contextUsage / model.contextWindow >= maxContextUsageRatio)
-            );
-            if (shouldResetModels) {
-                releaseModels();
-            }
-            if (!modelsRef.current) {
-                if (!shouldResetModels) {
-                    dispatch({ type: "joining", turn: currentTurn });
-                }
-                const models = await createModels(currentTurn.settings, signal, (participant) => {
-                    if (!shouldResetModels) {
-                        dispatch({ type: "joined", turn: currentTurn, participant });
-                    }
-                });
-                if (signal.aborted) {
-                    destroyModels(models);
-                    return;
-                }
-                modelsRef.current = models;
-            }
             dispatch({ type: "generating", turn: currentTurn });
-            const output = await modelsRef.current[currentTurn.participant].prompt(currentTurn.prompt, { signal });
+            const output = await models[currentTurn.participant].prompt(currentTurn.prompt, { signal });
             signal.throwIfAborted();
             dispatch({ type: "completed", turn: currentTurn, text: output.trim() });
             await sleep(currentTurn.settings.delayMs, signal);
             signal.throwIfAborted();
-            dispatch({ type: "next", turn: currentTurn });
+            dispatch({ type: "next", turn: currentTurn, resetModels: shouldResetModels(currentTurn.number, models) });
         } catch (error) {
             if (!signal.aborted) {
                 controller.abort();
-                releaseModels();
                 dispatch({ type: "error", turn: currentTurn, error });
             }
         }
-    }, [releaseModels]);
+    }, []);
 
     useEffect(() => {
-        if (!turn || availability.kind === "checking") {
-            return;
-        }
-        if (availability.kind === "unsupported" || availability.kind === "unavailable" || availability.kind === "error") {
-            dispatch({ type: "unavailable", turn, availability });
+        if (!turn || !models) {
             return;
         }
         const controller = new AbortController();
-        void runTurn(turn, controller);
+        void runTurn(turn, models, controller);
         return () => controller.abort();
-    }, [turn, availability, runTurn]);
+    }, [turn, models, runTurn]);
 
     const sendHumanMessage = useCallback((text: string) => {
         dispatch({ type: "human", text });
@@ -359,6 +364,13 @@ async function createModels(
     } finally {
         signal.removeEventListener("abort", destroy);
     }
+}
+
+// Checked after each turn, so the next turn starts on fresh models.
+function shouldResetModels(turnNumber: number, models: Models): boolean {
+    return turnNumber % maxTurnsBeforeModelReset === 0 ||
+        Object.values(models).some((model) =>
+            model.contextWindow > 0 && model.contextUsage / model.contextWindow >= maxContextUsageRatio);
 }
 
 function destroyModels(models: Models | null): void {

@@ -23,10 +23,12 @@ export type AiDisplayMessage = {
     turn: number;
 };
 
+export type SystemEvent = { type: "joining" } | { type: "joined"; participant: AiParticipant };
+
 export type SystemDisplayMessage = {
     id: string;
     kind: "system";
-    text: string;
+    event: SystemEvent;
 };
 
 export type HumanDisplayMessage = {
@@ -156,8 +158,8 @@ function reducer(state: State, action: Action): State {
             draft.history.splice(0, draft.history.length - maxRecentMessages);
         }
 
-        function addSystemMessage(text: string) {
-            draft.messages.push({ id: `system-${draft.messages.length}`, kind: "system", text });
+        function addSystemMessage(event: SystemEvent) {
+            draft.messages.push({ id: `system-${draft.messages.length}`, kind: "system", event });
         }
 
         switch (action.type) {
@@ -176,10 +178,10 @@ function reducer(state: State, action: Action): State {
                 finish({ kind: "error", error: action.error });
                 break;
             case "joining":
-                addSystemMessage("参加者を待っています…");
+                addSystemMessage({ type: "joining" });
                 break;
             case "joined":
-                addSystemMessage(`${action.participant} が参加しました`);
+                addSystemMessage({ type: "joined", participant: action.participant });
                 break;
             case "generating":
                 draft.phase = "generating";
@@ -192,7 +194,7 @@ function reducer(state: State, action: Action): State {
                     kind: "ai",
                     participant: action.turn.participant,
                     turn: action.turn.number,
-                    text: action.text || "(空の応答)",
+                    text: action.text,
                 });
                 appendHistory({ speaker: action.turn.participant, text: action.text });
                 break;

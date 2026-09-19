@@ -2,7 +2,7 @@ import { css } from "../styled-system/css";
 import { token } from "../styled-system/tokens";
 import { Avatar } from "./Avatar";
 import type { AvatarColor } from "./Avatar";
-import type { DisplayMessage } from "./useConversation";
+import type { DisplayMessage, SystemEvent } from "./useConversation";
 import type { AiParticipant } from "./useModels";
 
 type MessageProps = {
@@ -100,9 +100,18 @@ const textStyles = css({
     lineHeight: 1.65,
 });
 
+function describeSystemEvent(event: SystemEvent): string {
+    switch (event.type) {
+        case "joining":
+            return "参加者を待っています…";
+        case "joined":
+            return `${event.participant} が参加しました`;
+    }
+}
+
 export function Message({ message }: MessageProps) {
     if (message.kind === "system") {
-        return <li className={systemStyles}>{message.text}</li>;
+        return <li className={systemStyles}>{describeSystemEvent(message.event)}</li>;
     }
 
     if (message.kind === "human") {
@@ -121,7 +130,7 @@ export function Message({ message }: MessageProps) {
             <div className={bodyStyles}>
                 <div className={nameStyles}>{message.participant}</div>
                 <div className={bubbleStyles}>
-                    <p className={textStyles}>{message.text}</p>
+                    <p className={textStyles}>{message.text || "(空の応答)"}</p>
                 </div>
             </div>
         </li>

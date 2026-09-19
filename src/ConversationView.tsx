@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useRef, useState } from "preact/hooks";
 import { css } from "../styled-system/css";
 import { token } from "../styled-system/tokens";
 import { Message } from "./Message";
@@ -39,41 +39,31 @@ const topFadeStyles = css({
 });
 
 export function ConversationView({ messages }: ConversationViewProps) {
-    const listRef = useRef<HTMLOListElement>(null);
     const [isScrolled, setIsScrolled] = useState(false);
-
     const isStickyRef = useRef(true);
+    const previousScrollTopRef = useRef(0);
 
-    useEffect(() => {
-        const list = listRef.current;
+    const handleScroll = (event: Event) => {
+        const list = event.currentTarget as HTMLOListElement;
+        setIsScrolled(list.scrollTop > 0);
+        if (list.scrollHeight - list.scrollTop - list.clientHeight <= 8) {
+            isStickyRef.current = true;
+        } else if (list.scrollTop < previousScrollTopRef.current) {
+            isStickyRef.current = false;
+        }
+        previousScrollTopRef.current = list.scrollTop;
+    };
+
+    // Runs on every commit, so the list follows new content while sticky.
+    const followBottom = (list: HTMLOListElement | null) => {
         if (list && isStickyRef.current) {
             list.scrollTop = list.scrollHeight;
         }
-    }, [messages]);
-
-    useEffect(() => {
-        const list = listRef.current;
-        if (!list) {
-            return;
-        }
-        let previousScrollTop = list.scrollTop;
-        const updateScrolled = () => {
-            setIsScrolled(list.scrollTop > 0);
-            if (list.scrollHeight - list.scrollTop - list.clientHeight <= 8) {
-                isStickyRef.current = true;
-            } else if (list.scrollTop < previousScrollTop) {
-                isStickyRef.current = false;
-            }
-            previousScrollTop = list.scrollTop;
-        };
-        updateScrolled();
-        list.addEventListener("scroll", updateScrolled);
-        return () => list.removeEventListener("scroll", updateScrolled);
-    }, []);
+    };
 
     return (
         <section className={shellStyles} aria-label="AI conversation">
-            <ol className={`${listStyles} ${isScrolled ? topFadeStyles : ""}`} ref={listRef}>
+            <ol className={`${listStyles} ${isScrolled ? topFadeStyles : ""}`} ref={followBottom} onScroll={handleScroll}>
                 {messages.map((message) => (
                     <Message key={message.id} message={message} />
                 ))}

@@ -30,9 +30,9 @@ function describeError(status: Status): string | null {
         case "availability":
             switch (status.value.kind) {
                 case "unavailable":
-                    return "利用不可：この端末または Chrome 設定では Prompt API を使えません。";
+                    return "利用不可：この端末またはブラウザの設定では AI モデルを使えません。";
                 case "unsupported":
-                    return "Prompt API なし：Chrome Prompt API に対応した Chrome で localhost から開いてください。";
+                    return "このブラウザは非対応です：AI モデルを使える最新の Chrome で開いてください。";
                 case "error":
                     return `確認失敗：${errorMessage(status.value.error)}`;
                 default:

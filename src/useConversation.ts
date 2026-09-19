@@ -1,3 +1,4 @@
+import { produce } from "immer";
 import { useCallback, useEffect, useReducer, useRef } from "preact/hooks";
 import { useAvailability } from "./useAvailability";
 import { sleep } from "./utils";
@@ -95,71 +96,74 @@ function createTurn(state: State, number: number): Turn {
 }
 
 function reducer(state: State, action: Action): State {
-    function beginTurn(): State {
-        return {
-            ...state,
-            phase: "preparing",
-            status: { kind: "preparing" },
-            turn: createTurn(state, state.nextTurn),
-            nextTurn: state.nextTurn + 1,
-        };
-    }
-
-    function finish(status = initialStatus): State {
-        return { ...state, phase: "idle", turn: null, status };
-    }
-
     // A stopped turn may still resolve after the next one starts.
     if ("turn" in action && action.turn !== state.turn) {
         return state;
     }
-    switch (action.type) {
-        case "start":
-            return beginTurn();
-        case "human": {
-            const next: State = {
-                ...state,
-                messages: [...state.messages, { id: `human-${state.messages.length}`, kind: "human", text: action.text }],
-                history: [...state.history, { speaker: "human" as const, text: action.text }].slice(-maxRecentMessages),
-            };
-            // A turn still being prepared or generated was built without this message, so redo it.
-            return state.turn && (state.phase === "preparing" || state.phase === "generating")
-                ? { ...next, turn: { ...createTurn(next, state.turn.number), replaceModels: state.turn.replaceModels } }
-                : next;
+    return produce(state, (draft) => {
+        function beginTurn() {
+            draft.phase = "preparing";
+            draft.status = { kind: "preparing" };
+            draft.turn = createTurn(draft, draft.nextTurn);
+            draft.nextTurn += 1;
         }
-        case "unavailable":
-            return finish({ kind: "availability", value: action.availability });
-        case "joining":
-            return {
-                ...state,
-                messages: [...state.messages, {
-                    id: `system-${state.messages.length}`, kind: "system", text: "参加者を待っています…",
-                }],
-            };
-        case "joined":
-            return {
-                ...state,
-                messages: [...state.messages, {
-                    id: `system-${state.messages.length}`, kind: "system", text: `${action.participant} が参加しました`,
-                }],
-            };
-        case "generating":
-            return { ...state, phase: "generating", status: { kind: "running" } };
-        case "completed":
-            return {
-                ...state,
-                phase: "waiting",
-                messages: [...state.messages, {
+
+        function finish(status = initialStatus) {
+            draft.phase = "idle";
+            draft.turn = null;
+            draft.status = status;
+        }
+
+        function appendHistory(message: PromptMessage) {
+            draft.history.push(message);
+            draft.history.splice(0, draft.history.length - maxRecentMessages);
+        }
+
+        function addSystemMessage(text: string) {
+            draft.messages.push({ id: `system-${draft.messages.length}`, kind: "system", text });
+        }
+
+        switch (action.type) {
+            case "start":
+                beginTurn();
+                break;
+            case "human":
+                draft.messages.push({ id: `human-${draft.messages.length}`, kind: "human", text: action.text });
+                appendHistory({ speaker: "human", text: action.text });
+                // A turn still being prepared or generated was built without this message, so redo it.
+                if (draft.turn && (draft.phase === "preparing" || draft.phase === "generating")) {
+                    draft.turn = { ...createTurn(draft, draft.turn.number), replaceModels: draft.turn.replaceModels };
+                }
+                break;
+            case "unavailable":
+                finish({ kind: "availability", value: action.availability });
+                break;
+            case "joining":
+                addSystemMessage("参加者を待っています…");
+                break;
+            case "joined":
+                addSystemMessage(`${action.participant} が参加しました`);
+                break;
+            case "generating":
+                draft.phase = "generating";
+                draft.status = { kind: "running" };
+                break;
+            case "completed":
+                draft.phase = "waiting";
+                draft.messages.push({
                     id: `ai-${action.turn.number}`, kind: "ai", participant: action.turn.participant,
                     turn: action.turn.number, text: action.text || "(空の応答)",
-                }],
-                history: [...state.history, { speaker: action.turn.participant, text: action.text }].slice(-maxRecentMessages),
-            };
-        case "next":
-            return beginTurn();
-        case "error":
-            return finish({ kind: "error", error: action.error });
-    }
+                });
+                appendHistory({ speaker: action.turn.participant, text: action.text });
+                break;
+            case "next":
+                beginTurn();
+                break;
+            case "error":
+                finish({ kind: "error", error: action.error });
+                break;
+        }
+    });
 }
 
 export function useConversation(): UseConversationResult {

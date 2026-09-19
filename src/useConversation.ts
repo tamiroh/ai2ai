@@ -39,6 +39,7 @@ type Action =
     | { type: "unavailable"; turn: Turn; availability: AvailabilityResult }
     | { type: "reset"; turn: Turn }
     | { type: "joining"; turn: Turn }
+    | { type: "joined"; turn: Turn; agent: AgentName }
     | { type: "generating"; turn: Turn }
     | { type: "completed"; turn: Turn; text: string }
     | { type: "next"; turn: Turn }
@@ -136,6 +137,13 @@ function reducer(state: State, action: Action): State {
                     id: `system-${state.messages.length}`, kind: "system", text: "エージェントの参加を待っています…",
                 }],
             };
+        case "joined":
+            return {
+                ...state,
+                messages: [...state.messages, {
+                    id: `system-${state.messages.length}`, kind: "system", text: `Agent ${action.agent} が参加しました`,
+                }],
+            };
         case "generating":
             return { ...state, phase: "generating", status: { kind: "running" } };
         case "completed":
@@ -187,7 +195,9 @@ export function useConversation(): UseConversationResult {
                 if (!shouldResetModels) {
                     dispatch({ type: "joining", turn: currentTurn });
                 }
-                const models = await createModels(currentTurn.settings, signal);
+                const models = await createModels(currentTurn.settings, signal, (agent) => {
+                    dispatch({ type: "joined", turn: currentTurn, agent });
+                });
                 if (signal.aborted) {
                     destroyModels(models);
                     return;
@@ -286,6 +296,7 @@ type Models = Record<AgentName, LanguageModel>;
 async function createModels(
     settings: ConversationSettings,
     signal: AbortSignal,
+    onCreated: (agent: AgentName) => void,
 ): Promise<Models> {
     const created = new Set<LanguageModel>();
     const destroy = () => {
@@ -323,6 +334,7 @@ async function createModels(
             throw new DOMException("Model creation cancelled", "AbortError");
         }
         created.add(model);
+        onCreated(agentName);
         return model;
     };
     try {

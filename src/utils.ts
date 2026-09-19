@@ -1,12 +1,14 @@
 export function sleep(ms: number, signal: AbortSignal): Promise<void> {
-    return new Promise((resolve) => {
-        const finish = () => {
+    return new Promise((resolve, reject) => {
+        signal.throwIfAborted();
+        const onAbort = () => {
             clearTimeout(timer);
-            signal.removeEventListener("abort", finish);
-            resolve();
+            reject(signal.reason);
         };
-        const timer = setTimeout(finish, ms);
-        signal.addEventListener("abort", finish, { once: true });
-        if (signal.aborted) finish();
+        const timer = setTimeout(() => {
+            signal.removeEventListener("abort", onAbort);
+            resolve();
+        }, ms);
+        signal.addEventListener("abort", onAbort, { once: true });
     });
 }

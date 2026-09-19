@@ -219,10 +219,8 @@ export function useConversation(): UseConversationResult {
         try {
             dispatch({ type: "generating", turn: currentTurn });
             const output = await models.prompt(currentTurn.participant, currentTurn.prompt, signal);
-            signal.throwIfAborted();
             dispatch({ type: "completed", turn: currentTurn, text: output.trim() });
             await sleep(currentTurn.settings.delayMs, signal);
-            signal.throwIfAborted();
             models.resetIfNeeded(currentTurn.number);
             dispatch({ type: "next", turn: currentTurn });
         } catch (error) {

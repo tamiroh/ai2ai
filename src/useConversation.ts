@@ -17,7 +17,7 @@ export type UseConversationResult = {
 
 type Turn = {
     number: number;
-    agent: AgentName;
+    ai: AiName;
     settings: ConversationSettings;
     prompt: string;
     replaceModels: boolean;
@@ -38,7 +38,7 @@ type Action =
     | { type: "human"; text: string }
     | { type: "unavailable"; turn: Turn; availability: AvailabilityResult }
     | { type: "joining"; turn: Turn }
-    | { type: "joined"; turn: Turn; agent: AgentName }
+    | { type: "joined"; turn: Turn; ai: AiName }
     | { type: "generating"; turn: Turn }
     | { type: "completed"; turn: Turn; text: string }
     | { type: "next"; turn: Turn }
@@ -48,8 +48,8 @@ const initialStatus: Status = { kind: "idle" };
 const initialState: State = {
     settings: {
         topic: "ふたりが、最近ちょっと楽しかったことや気になることを、ゆるく話し続ける。",
-        agentA: "穏やかで聞き上手。相手の話に乗りながら、日常の小さな発見を楽しむ。",
-        agentB: "明るく好奇心旺盛。少し冗談を交えつつ、会話をあたたかく広げる。",
+        aiA: "穏やかで聞き上手。相手の話に乗りながら、日常の小さな発見を楽しむ。",
+        aiB: "明るく好奇心旺盛。少し冗談を交えつつ、会話をあたたかく広げる。",
         delayMs: 1200,
         maxLength: 220,
     },
@@ -63,10 +63,10 @@ const initialState: State = {
 
 function reducer(state: State, action: Action): State {
     function beginTurn(): State {
-        const agent: AgentName = state.nextTurn % 2 === 1 ? "A" : "B";
+        const ai: AiName = state.nextTurn % 2 === 1 ? "A" : "B";
         const recentHistory = state.history.slice(-maxRecentMessages);
         const recentMessages = recentHistory
-            .map((message) => `${message.speaker === "human" ? "ユーザー" : `Agent ${message.speaker}`}: ${message.text}`)
+            .map((message) => `${message.speaker === "human" ? "ユーザー" : message.speaker}: ${message.text}`)
             .join("\n");
         // Freeze the inputs for this turn.
         return {
@@ -75,11 +75,11 @@ function reducer(state: State, action: Action): State {
             status: { kind: "preparing" },
             turn: {
                 number: state.nextTurn,
-                agent,
+                ai,
                 settings: state.settings,
                 prompt: [
                     `テーマ: ${state.settings.topic}`,
-                    `あなたは Agent ${agent} です。次は Agent ${agent === "A" ? "B" : "A"} に返答してください。`,
+                    `あなたは ${ai} です。次は ${ai === "A" ? "B" : "A"} に返答してください。`,
                     `最大 ${state.settings.maxLength} 文字。`,
                     "自然な雑談として、気軽で親しみやすい口調を保ってください。",
                     "2〜4文で、相手の質問に答えることを優先してください。",
@@ -93,8 +93,8 @@ function reducer(state: State, action: Action): State {
                     recentMessages || "まだ会話は始まっていません。",
                 ].join("\n\n"),
                 replaceModels: state.turn !== null && (
-                    state.turn.settings.agentA !== state.settings.agentA ||
-                    state.turn.settings.agentB !== state.settings.agentB
+                    state.turn.settings.aiA !== state.settings.aiA ||
+                    state.turn.settings.aiB !== state.settings.aiB
                 ),
             },
             nextTurn: state.nextTurn + 1,
@@ -124,14 +124,14 @@ function reducer(state: State, action: Action): State {
             return {
                 ...state,
                 messages: [...state.messages, {
-                    id: `system-${state.messages.length}`, kind: "system", text: "エージェントの参加を待っています…",
+                    id: `system-${state.messages.length}`, kind: "system", text: "AI の参加を待っています…",
                 }],
             };
         case "joined":
             return {
                 ...state,
                 messages: [...state.messages, {
-                    id: `system-${state.messages.length}`, kind: "system", text: `Agent ${action.agent} が参加しました`,
+                    id: `system-${state.messages.length}`, kind: "system", text: `${displayName(action.ai)} が参加しました`,
                 }],
             };
         case "generating":
@@ -141,10 +141,10 @@ function reducer(state: State, action: Action): State {
                 ...state,
                 phase: "waiting",
                 messages: [...state.messages, {
-                    id: `agent-${action.turn.number}`, kind: "agent", agent: action.turn.agent,
+                    id: `ai-${action.turn.number}`, kind: "ai", ai: action.turn.ai,
                     turn: action.turn.number, text: action.text || "(空の応答)",
                 }],
-                history: [...state.history, { speaker: action.turn.agent, text: action.text }].slice(-maxRecentMessages),
+                history: [...state.history, { speaker: action.turn.ai, text: action.text }].slice(-maxRecentMessages),
             };
         case "next":
             return beginTurn();
@@ -184,9 +184,9 @@ export function useConversation(): UseConversationResult {
                 if (!shouldResetModels) {
                     dispatch({ type: "joining", turn: currentTurn });
                 }
-                const models = await createModels(currentTurn.settings, signal, (agent) => {
+                const models = await createModels(currentTurn.settings, signal, (ai) => {
                     if (!shouldResetModels) {
-                        dispatch({ type: "joined", turn: currentTurn, agent });
+                        dispatch({ type: "joined", turn: currentTurn, ai });
                     }
                 });
                 if (signal.aborted) {
@@ -196,7 +196,7 @@ export function useConversation(): UseConversationResult {
                 modelsRef.current = models;
             }
             dispatch({ type: "generating", turn: currentTurn });
-            const output = await modelsRef.current[currentTurn.agent].prompt(currentTurn.prompt, { signal });
+            const output = await modelsRef.current[currentTurn.ai].prompt(currentTurn.prompt, { signal });
             signal.throwIfAborted();
             dispatch({ type: "completed", turn: currentTurn, text: output.trim() });
             await sleep(currentTurn.settings.delayMs, signal);
@@ -231,25 +231,29 @@ export function useConversation(): UseConversationResult {
     return {
         status: state.status ?? { kind: "availability", value: availability },
         messages: state.messages,
-        typingName: state.phase === "generating" && state.turn ? `Agent ${state.turn.agent}` : null,
+        typingName: state.phase === "generating" && state.turn ? displayName(state.turn.ai) : null,
         sendHumanMessage,
     };
 }
 
-export type AgentName = "A" | "B";
+export type AiName = "A" | "B";
+
+export function displayName(ai: AiName): string {
+    return `AI ${ai}`;
+}
 
 export type ConversationSettings = {
     topic: string;
-    agentA: string;
-    agentB: string;
+    aiA: string;
+    aiB: string;
     delayMs: number;
     maxLength: number;
 };
 
-export type AgentDisplayMessage = {
+export type AiDisplayMessage = {
     id: string;
-    kind: "agent";
-    agent: AgentName;
+    kind: "ai";
+    ai: AiName;
     text: string;
     turn: number;
 };
@@ -266,10 +270,10 @@ export type HumanDisplayMessage = {
     text: string;
 };
 
-export type DisplayMessage = AgentDisplayMessage | SystemDisplayMessage | HumanDisplayMessage;
+export type DisplayMessage = AiDisplayMessage | SystemDisplayMessage | HumanDisplayMessage;
 
 type PromptMessage = {
-    speaker: AgentName | "human";
+    speaker: AiName | "human";
     text: string;
 };
 
@@ -282,12 +286,12 @@ const maxRecentMessages = 8;
 const maxTurnsBeforeModelReset = 16;
 const maxContextUsageRatio = 0.65;
 
-type Models = Record<AgentName, LanguageModel>;
+type Models = Record<AiName, LanguageModel>;
 
 async function createModels(
     settings: ConversationSettings,
     signal: AbortSignal,
-    onCreated: (agent: AgentName) => void,
+    onCreated: (ai: AiName) => void,
 ): Promise<Models> {
     const created = new Set<LanguageModel>();
     const destroy = () => {
@@ -296,7 +300,7 @@ async function createModels(
     };
     let failed = false;
     signal.addEventListener("abort", destroy, { once: true });
-    const create = async (agentName: AgentName, persona: string): Promise<LanguageModel> => {
+    const create = async (aiName: AiName, persona: string): Promise<LanguageModel> => {
         const model = await LanguageModel.create({
             ...modelOptions,
             signal,
@@ -305,7 +309,7 @@ async function createModels(
                     role: "system",
                     content: [
                         "あなたは継続対話に参加する会話相手です。",
-                        `あなたの名前は Agent ${agentName} です。`,
+                        `あなたの名前は ${aiName} です。`,
                         `人格: ${persona}`,
                         "返答は日本語で、短めの自然なおしゃべりにしてください。",
                         "相手の直前の発言をやさしく拾い、感想や小さな質問を添えて会話を続けてください。",
@@ -325,12 +329,12 @@ async function createModels(
             throw new DOMException("Model creation cancelled", "AbortError");
         }
         created.add(model);
-        onCreated(agentName);
+        onCreated(aiName);
         return model;
     };
     try {
         signal.throwIfAborted();
-        const [A, B] = await Promise.all([create("A", settings.agentA), create("B", settings.agentB)]);
+        const [A, B] = await Promise.all([create("A", settings.aiA), create("B", settings.aiB)]);
         signal.throwIfAborted();
         return { A, B };
     } catch (error) {

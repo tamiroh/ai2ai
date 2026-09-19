@@ -4,7 +4,7 @@ import { sleep } from "./utils";
 import type { AvailabilityResult, AvailabilityState } from "./useAvailability";
 
 export type Status =
-    | { kind: "idle" | "preparing" | "resetting" | "running" }
+    | { kind: "idle" | "preparing" | "running" }
     | { kind: "availability"; value: AvailabilityState }
     | { kind: "error"; error: unknown };
 
@@ -37,7 +37,6 @@ type Action =
     | { type: "start" }
     | { type: "human"; text: string }
     | { type: "unavailable"; turn: Turn; availability: AvailabilityResult }
-    | { type: "reset"; turn: Turn }
     | { type: "joining"; turn: Turn }
     | { type: "joined"; turn: Turn; agent: AgentName }
     | { type: "generating"; turn: Turn }
@@ -121,15 +120,6 @@ function reducer(state: State, action: Action): State {
             };
         case "unavailable":
             return finish({ kind: "availability", value: action.availability });
-        case "reset":
-            return {
-                ...state,
-                status: { kind: "resetting" },
-                messages: [...state.messages, {
-                    id: `system-${state.messages.length}`, kind: "system",
-                    text: `Turn ${action.turn.number - 1}。ふたりは少し深呼吸して、直近の話の余韻から会話を続けます。`,
-                }],
-            };
         case "joining":
             return {
                 ...state,
@@ -189,14 +179,15 @@ export function useConversation(): UseConversationResult {
             );
             if (shouldResetModels) {
                 releaseModels();
-                dispatch({ type: "reset", turn: currentTurn });
             }
             if (!modelsRef.current) {
                 if (!shouldResetModels) {
                     dispatch({ type: "joining", turn: currentTurn });
                 }
                 const models = await createModels(currentTurn.settings, signal, (agent) => {
-                    dispatch({ type: "joined", turn: currentTurn, agent });
+                    if (!shouldResetModels) {
+                        dispatch({ type: "joined", turn: currentTurn, agent });
+                    }
                 });
                 if (signal.aborted) {
                     destroyModels(models);

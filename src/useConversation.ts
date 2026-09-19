@@ -61,42 +61,46 @@ const initialState: State = {
     nextTurn: 1,
 };
 
+// Freeze the inputs for a turn; the prompt is built from the history at this moment.
+function createTurn(state: State, number: number): Turn {
+    const participant: AiParticipant = number % 2 === 1 ? "A" : "B";
+    const recentHistory = state.history.slice(-maxRecentMessages);
+    const recentMessages = recentHistory
+        .map((message) => `${message.speaker === "human" ? "ユーザー" : message.speaker}: ${message.text}`)
+        .join("\n");
+    return {
+        number,
+        participant,
+        settings: state.settings,
+        prompt: [
+            `テーマ: ${state.settings.topic}`,
+            `あなたは ${participant} です。次は ${participant === "A" ? "B" : "A"} に返答してください。`,
+            `最大 ${state.settings.maxLength} 文字。`,
+            "自然な雑談として、気軽で親しみやすい口調を保ってください。",
+            "2〜4文で、相手の質問に答えることを優先してください。",
+            "相手が出していない技術・AI・データ分析の話題を新しく始めないでください。",
+            "直近の会話に未完了の話題がある場合は、その話題を続けてください。",
+            ...(recentHistory.at(-1)?.speaker === "human"
+                ? ["人間のユーザーが会話に参加しています。ユーザーの直前の発言に、まず答えてください。"]
+                : []),
+            "急に新しい近況を始めず、相手の最後の発言に直接返してください。",
+            "直近の会話:",
+            recentMessages || "まだ会話は始まっていません。",
+        ].join("\n\n"),
+        replaceModels: state.turn !== null && (
+            state.turn.settings.participantA !== state.settings.participantA ||
+            state.turn.settings.participantB !== state.settings.participantB
+        ),
+    };
+}
+
 function reducer(state: State, action: Action): State {
     function beginTurn(): State {
-        const participant: AiParticipant = state.nextTurn % 2 === 1 ? "A" : "B";
-        const recentHistory = state.history.slice(-maxRecentMessages);
-        const recentMessages = recentHistory
-            .map((message) => `${message.speaker === "human" ? "ユーザー" : message.speaker}: ${message.text}`)
-            .join("\n");
-        // Freeze the inputs for this turn.
         return {
             ...state,
             phase: "preparing",
             status: { kind: "preparing" },
-            turn: {
-                number: state.nextTurn,
-                participant,
-                settings: state.settings,
-                prompt: [
-                    `テーマ: ${state.settings.topic}`,
-                    `あなたは ${participant} です。次は ${participant === "A" ? "B" : "A"} に返答してください。`,
-                    `最大 ${state.settings.maxLength} 文字。`,
-                    "自然な雑談として、気軽で親しみやすい口調を保ってください。",
-                    "2〜4文で、相手の質問に答えることを優先してください。",
-                    "相手が出していない技術・AI・データ分析の話題を新しく始めないでください。",
-                    "直近の会話に未完了の話題がある場合は、その話題を続けてください。",
-                    ...(recentHistory.at(-1)?.speaker === "human"
-                        ? ["人間のユーザーが会話に参加しています。ユーザーの直前の発言に、まず答えてください。"]
-                        : []),
-                    "急に新しい近況を始めず、相手の最後の発言に直接返してください。",
-                    "直近の会話:",
-                    recentMessages || "まだ会話は始まっていません。",
-                ].join("\n\n"),
-                replaceModels: state.turn !== null && (
-                    state.turn.settings.participantA !== state.settings.participantA ||
-                    state.turn.settings.participantB !== state.settings.participantB
-                ),
-            },
+            turn: createTurn(state, state.nextTurn),
             nextTurn: state.nextTurn + 1,
         };
     }
@@ -112,12 +116,17 @@ function reducer(state: State, action: Action): State {
     switch (action.type) {
         case "start":
             return beginTurn();
-        case "human":
-            return {
+        case "human": {
+            const next: State = {
                 ...state,
                 messages: [...state.messages, { id: `human-${state.messages.length}`, kind: "human", text: action.text }],
                 history: [...state.history, { speaker: "human" as const, text: action.text }].slice(-maxRecentMessages),
             };
+            // A turn still being prepared or generated was built without this message, so redo it.
+            return state.turn && (state.phase === "preparing" || state.phase === "generating")
+                ? { ...next, turn: { ...createTurn(next, state.turn.number), replaceModels: state.turn.replaceModels } }
+                : next;
+        }
         case "unavailable":
             return finish({ kind: "availability", value: action.availability });
         case "joining":

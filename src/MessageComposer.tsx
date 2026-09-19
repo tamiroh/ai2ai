@@ -21,8 +21,8 @@ const textareaStyles = css({
     borderRadius: "22px",
     background: "panel",
     color: "ink",
-    padding: "11px 18px",
-    lineHeight: 1.5,
+    padding: "9px 18px",
+    lineHeight: "24px",
     resize: "none",
     outline: "none",
     _focus: {
@@ -33,7 +33,9 @@ const textareaStyles = css({
 const sendButtonStyles = css({
     minHeight: "44px",
     minWidth: "88px",
+    border: "none",
     borderRadius: "22px",
+    boxShadow: "none",
     background: "accent",
     color: "panel",
     padding: "0 20px",

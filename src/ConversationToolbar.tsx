@@ -5,7 +5,6 @@ type ConversationToolbarProps = {
     status: Status;
     running: boolean;
     onToggle: () => void;
-    onClear: () => void;
 };
 
 const toolbarStyles = css({
@@ -43,8 +42,6 @@ const buttonBaseStyles = {
         opacity: 0.48,
     },
 } as const;
-
-const clearButtonStyles = css(buttonBaseStyles);
 
 const startButtonStyles = css({
     ...buttonBaseStyles,
@@ -85,7 +82,7 @@ const statusErrorStyles = css({
     overflowWrap: "anywhere",
 });
 
-export function ConversationToolbar({ status, running, onToggle, onClear }: ConversationToolbarProps) {
+export function ConversationToolbar({ status, running, onToggle }: ConversationToolbarProps) {
     const displayStatus = describeStatus(status);
     const isBusy = displayStatus.kind === "busy";
     const buttonLabel = isBusy ? "準備中" : running ? "停止" : "開始";
@@ -107,9 +104,6 @@ export function ConversationToolbar({ status, running, onToggle, onClear }: Conv
                     onClick={onToggle}
                 >
                     {buttonLabel}
-                </button>
-                <button className={clearButtonStyles} type="button" onClick={onClear}>
-                    消去
                 </button>
             </div>
         </div>

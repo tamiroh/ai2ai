@@ -16,14 +16,14 @@ const appStyles = css({
 });
 
 export function App() {
-    const { status, running, messages, typingName, toggle, clear } = useConversation();
+    const { status, running, messages, typingName, toggle } = useConversation();
 
     return (
         <main className={appStyles}>
             <ConversationView
                 messages={messages}
                 typingName={typingName}
-                toolbar={<ConversationToolbar status={status} running={running} onToggle={toggle} onClear={clear} />}
+                toolbar={<ConversationToolbar status={status} running={running} onToggle={toggle} />}
             />
         </main>
     );

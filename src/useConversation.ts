@@ -15,7 +15,6 @@ export type UseConversationResult = {
     messages: DisplayMessage[];
     typingName: string | null;
     toggle: () => void;
-    clear: () => void;
 };
 
 type Turn = {
@@ -38,7 +37,6 @@ type State = {
 
 type Action =
     | { type: "toggle" }
-    | { type: "clear" }
     | { type: "progress"; turn: Turn; progress: number }
     | { type: "unavailable"; turn: Turn; availability: AvailabilityResult }
     | { type: "reset"; turn: Turn }
@@ -105,15 +103,13 @@ function reducer(state: State, action: Action): State {
         return { ...state, phase: "idle", turn: null, status };
     }
 
-    // A cleared or stopped turn may still resolve after the next one starts.
+    // A stopped turn may still resolve after the next one starts.
     if ("turn" in action && action.turn !== state.turn) {
         return state;
     }
     switch (action.type) {
         case "toggle":
             return state.turn ? finish() : beginTurn();
-        case "clear":
-            return { ...initialState, settings: state.settings, status: initialStatus };
         case "progress":
             return state.phase === "preparing"
                 ? { ...state, status: { kind: "downloading", progress: action.progress } }
@@ -232,18 +228,12 @@ export function useConversation(): UseConversationResult {
         dispatch({ type: "toggle" });
     }, [cancel]);
 
-    const clear = useCallback(() => {
-        cancel();
-        dispatch({ type: "clear" });
-    }, [cancel]);
-
     return {
         status: state.status ?? { kind: "availability", value: availability },
         running: state.phase !== "idle",
         messages: state.messages,
         typingName: state.phase === "generating" && state.turn ? `Agent ${state.turn.agent}` : null,
         toggle,
-        clear,
     };
 }
 

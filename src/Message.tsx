@@ -1,9 +1,16 @@
 import { css } from "../styled-system/css";
 import { token } from "../styled-system/tokens";
-import type { DisplayMessage } from "./useConversation";
+import { Avatar } from "./Avatar";
+import type { AvatarColor } from "./Avatar";
+import type { AgentName, DisplayMessage } from "./useConversation";
 
 type MessageProps = {
     message: DisplayMessage;
+};
+
+const agentAvatarColors: Record<AgentName, AvatarColor> = {
+    A: "teal",
+    B: "amber",
 };
 
 const itemStyles = css({
@@ -15,22 +22,6 @@ const itemStyles = css({
         width: "100%",
     },
 });
-
-const avatarStyles = css({
-    display: "grid",
-    placeItems: "center",
-    flexShrink: 0,
-    width: "36px",
-    height: "36px",
-    borderRadius: "50%",
-    color: "panel",
-    fontSize: "15px",
-    fontWeight: 800,
-});
-
-const avatarAStyles = css({ background: "agentA" });
-
-const avatarBStyles = css({ background: "agentB" });
 
 const bodyStyles = css({
     flex: 1,
@@ -129,9 +120,7 @@ export function Message({ message }: MessageProps) {
 
     return (
         <li className={itemStyles}>
-            <div className={`${avatarStyles} ${message.agent === "A" ? avatarAStyles : avatarBStyles}`} aria-hidden="true">
-                {message.agent}
-            </div>
+            <Avatar color={agentAvatarColors[message.agent]} initial={message.agent} />
             <div className={bodyStyles}>
                 <div className={nameStyles}>Agent {message.agent}</div>
                 <div className={bubbleStyles}>

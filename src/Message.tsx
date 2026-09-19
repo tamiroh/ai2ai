@@ -100,15 +100,6 @@ const systemStyles = css({
     color: "muted",
 });
 
-const systemMetaStyles = css({
-    display: "flex",
-    justifyContent: "center",
-    gap: "12px",
-    marginBottom: "8px",
-    fontSize: "12px",
-    fontWeight: 800,
-});
-
 const textStyles = css({
     margin: 0,
     whiteSpace: "pre-wrap",
@@ -121,10 +112,6 @@ export function Message({ message }: MessageProps) {
     if (message.kind === "system") {
         return (
             <li className={systemStyles}>
-                <div className={systemMetaStyles}>
-                    <span>System</span>
-                    <span>Pause</span>
-                </div>
                 <p className={`${textStyles} ${textCenteredStyles}`}>{message.text}</p>
             </li>
         );

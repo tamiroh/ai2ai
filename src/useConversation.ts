@@ -6,7 +6,6 @@ import type { AvailabilityResult, AvailabilityState } from "./useAvailability";
 export type Status =
     | { kind: "idle" | "preparing" | "resetting" | "running" }
     | { kind: "availability"; value: AvailabilityState }
-    | { kind: "downloading"; progress: number }
     | { kind: "error"; error: unknown };
 
 export type UseConversationResult = {
@@ -37,9 +36,9 @@ type State = {
 type Action =
     | { type: "start" }
     | { type: "human"; text: string }
-    | { type: "progress"; turn: Turn; progress: number }
     | { type: "unavailable"; turn: Turn; availability: AvailabilityResult }
     | { type: "reset"; turn: Turn }
+    | { type: "joining"; turn: Turn }
     | { type: "generating"; turn: Turn }
     | { type: "completed"; turn: Turn; text: string }
     | { type: "next"; turn: Turn }
@@ -119,10 +118,6 @@ function reducer(state: State, action: Action): State {
                 messages: [...state.messages, { id: `human-${state.messages.length}`, kind: "human", text: action.text }],
                 history: [...state.history, { speaker: "human" as const, text: action.text }].slice(-maxRecentMessages),
             };
-        case "progress":
-            return state.phase === "preparing"
-                ? { ...state, status: { kind: "downloading", progress: action.progress } }
-                : state;
         case "unavailable":
             return finish({ kind: "availability", value: action.availability });
         case "reset":
@@ -130,8 +125,15 @@ function reducer(state: State, action: Action): State {
                 ...state,
                 status: { kind: "resetting" },
                 messages: [...state.messages, {
-                    id: `system-${action.turn.number}`, kind: "system",
+                    id: `system-${state.messages.length}`, kind: "system",
                     text: `Turn ${action.turn.number - 1}。ふたりは少し深呼吸して、直近の話の余韻から会話を続けます。`,
+                }],
+            };
+        case "joining":
+            return {
+                ...state,
+                messages: [...state.messages, {
+                    id: `system-${state.messages.length}`, kind: "system", text: "エージェントの参加を待っています…",
                 }],
             };
         case "generating":
@@ -182,9 +184,10 @@ export function useConversation(): UseConversationResult {
                 dispatch({ type: "reset", turn: currentTurn });
             }
             if (!modelsRef.current) {
-                const models = await createModels(currentTurn.settings, signal, (progress) => {
-                    dispatch({ type: "progress", turn: currentTurn, progress });
-                });
+                if (!shouldResetModels) {
+                    dispatch({ type: "joining", turn: currentTurn });
+                }
+                const models = await createModels(currentTurn.settings, signal);
                 if (signal.aborted) {
                     destroyModels(models);
                     return;
@@ -283,7 +286,6 @@ type Models = Record<AgentName, LanguageModel>;
 async function createModels(
     settings: ConversationSettings,
     signal: AbortSignal,
-    onProgress: (progress: number) => void,
 ): Promise<Models> {
     const created = new Set<LanguageModel>();
     const destroy = () => {
@@ -315,13 +317,6 @@ async function createModels(
                     ].join("\n"),
                 },
             ],
-            monitor: (monitor: CreateMonitor) => {
-                monitor.addEventListener("downloadprogress", (event) => {
-                    if (!signal.aborted && !failed) {
-                        onProgress((event as ProgressEvent).loaded);
-                    }
-                });
-            },
         });
         if (signal.aborted || failed) {
             model.destroy();

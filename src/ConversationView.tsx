@@ -42,9 +42,11 @@ export function ConversationView({ messages }: ConversationViewProps) {
     const listRef = useRef<HTMLOListElement>(null);
     const [isScrolled, setIsScrolled] = useState(false);
 
+    const isStickyRef = useRef(true);
+
     useEffect(() => {
         const list = listRef.current;
-        if (list) {
+        if (list && isStickyRef.current) {
             list.scrollTop = list.scrollHeight;
         }
     }, [messages]);
@@ -54,7 +56,16 @@ export function ConversationView({ messages }: ConversationViewProps) {
         if (!list) {
             return;
         }
-        const updateScrolled = () => setIsScrolled(list.scrollTop > 0);
+        let previousScrollTop = list.scrollTop;
+        const updateScrolled = () => {
+            setIsScrolled(list.scrollTop > 0);
+            if (list.scrollHeight - list.scrollTop - list.clientHeight <= 8) {
+                isStickyRef.current = true;
+            } else if (list.scrollTop < previousScrollTop) {
+                isStickyRef.current = false;
+            }
+            previousScrollTop = list.scrollTop;
+        };
         updateScrolled();
         list.addEventListener("scroll", updateScrolled);
         return () => list.removeEventListener("scroll", updateScrolled);

@@ -121,10 +121,10 @@ function createTurn(state: State, number: number): Turn {
             "直近の会話に未完了の話題がある場合は、その話題を続けてください。",
             ...(recentHistory.some((message) => message.speaker === "human")
                 ? [
-                    "参加者は A、B、人間のユーザーの 3 人です。",
-                    "発言の冒頭に「Bさん、」「ユーザーさん、」のように宛名を付け、誰に向けた言葉かをはっきりさせてください。「あなた」だけで呼ばないでください。",
-                    "直近の発言が他の参加者宛てなら、その人の代わりに答えず、感想や一言を添える程度にしてください。あなた宛て、または全員宛てなら、まず答えてください。",
-                ]
+                      "参加者は A、B、人間のユーザーの 3 人です。",
+                      "発言の冒頭に「Bさん、」「ユーザーさん、」のように宛名を付け、誰に向けた言葉かをはっきりさせてください。「あなた」だけで呼ばないでください。",
+                      "直近の発言が他の参加者宛てなら、その人の代わりに答えず、感想や一言を添える程度にしてください。あなた宛て、または全員宛てなら、まず答えてください。",
+                  ]
                 : []),
             "急に新しい近況を始めず、相手の最後の発言に直接返してください。",
             "直近の会話:",
@@ -189,8 +189,11 @@ function reducer(state: State, action: Action): State {
             case "completed":
                 draft.phase = "waiting";
                 draft.messages.push({
-                    id: `ai-${action.turn.number}`, kind: "ai", participant: action.turn.participant,
-                    turn: action.turn.number, text: action.text || "(空の応答)",
+                    id: `ai-${action.turn.number}`,
+                    kind: "ai",
+                    participant: action.turn.participant,
+                    turn: action.turn.number,
+                    text: action.text || "(空の応答)",
                 });
                 appendHistory({ speaker: action.turn.participant, text: action.text });
                 break;
@@ -208,7 +211,8 @@ export function useConversation(): UseConversationResult {
     const [state, dispatch] = useReducer(reducer, initialState, (state) => reducer(state, { type: "start" }));
     const availability = useAvailability(modelOptions);
     const { turn, settings } = state;
-    const isUnavailable = availability.kind === "unsupported" || availability.kind === "unavailable" || availability.kind === "error";
+    const isUnavailable =
+        availability.kind === "unsupported" || availability.kind === "unavailable" || availability.kind === "error";
     const models = useModels(dispatch, availability.kind !== "checking" && !isUnavailable, {
         A: settings.participantA,
         B: settings.participantB,

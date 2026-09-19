@@ -74,7 +74,11 @@ export function ConversationView({ messages, typingName, status, onSend }: Conve
     return (
         <section className={shellStyles} aria-label="Conversation">
             <ConversationStatus status={status} />
-            <ol className={`${listStyles} ${isScrolled ? topFadeStyles : ""}`} ref={followBottom} onScroll={handleScroll}>
+            <ol
+                className={`${listStyles} ${isScrolled ? topFadeStyles : ""}`}
+                ref={followBottom}
+                onScroll={handleScroll}
+            >
                 {messages.map((message) => (
                     <Message key={message.id} message={message} />
                 ))}

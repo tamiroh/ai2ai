@@ -19,12 +19,7 @@ export function App() {
 
     return (
         <main className={appStyles}>
-            <ConversationView
-                messages={messages}
-                typingName={typingName}
-                onSend={sendHumanMessage}
-                status={status}
-            />
+            <ConversationView messages={messages} typingName={typingName} onSend={sendHumanMessage} status={status} />
         </main>
     );
 }

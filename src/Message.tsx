@@ -102,11 +102,7 @@ const textStyles = css({
 
 export function Message({ message }: MessageProps) {
     if (message.kind === "system") {
-        return (
-            <li className={systemStyles}>
-                {message.text}
-            </li>
-        );
+        return <li className={systemStyles}>{message.text}</li>;
     }
 
     if (message.kind === "human") {

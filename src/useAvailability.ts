@@ -1,8 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 
-export type AvailabilityResult =
-    | { kind: Availability | "unsupported" }
-    | { kind: "error"; error: unknown };
+export type AvailabilityResult = { kind: Availability | "unsupported" } | { kind: "error"; error: unknown };
 
 export type AvailabilityState = AvailabilityResult | { kind: "checking" };
 

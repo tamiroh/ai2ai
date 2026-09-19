@@ -4,9 +4,7 @@ import type { Dispatch } from "preact/hooks";
 export type AiParticipant = "A" | "B";
 
 export type ModelEvent =
-    | { type: "joining" }
-    | { type: "joined"; participant: AiParticipant }
-    | { type: "modelsFailed"; error: unknown };
+    { type: "joining" } | { type: "joined"; participant: AiParticipant } | { type: "modelsFailed"; error: unknown };
 
 export const modelOptions: LanguageModelCreateCoreOptions = {
     expectedInputs: [{ type: "text", languages: ["ja", "en"] }],
@@ -23,7 +21,11 @@ export type ModelSet = {
     resetIfNeeded: (turnNumber: number) => void;
 };
 
-export function useModels(dispatch: Dispatch<ModelEvent>, enabled: boolean, personas: Record<AiParticipant, string>): ModelSet | null {
+export function useModels(
+    dispatch: Dispatch<ModelEvent>,
+    enabled: boolean,
+    personas: Record<AiParticipant, string>,
+): ModelSet | null {
     const [epoch, setEpoch] = useState(0);
     const [ready, setReady] = useState<{ models: Models; epoch: number } | null>(null);
 
@@ -77,16 +79,19 @@ export function useModels(dispatch: Dispatch<ModelEvent>, enabled: boolean, pers
         if (isFirstEpoch) {
             dispatch({ type: "joining" });
         }
-        Promise.all([createModel("A", personas.A), createModel("B", personas.B)]).then(([A, B]) => {
-            if (!signal.aborted) {
-                setReady({ models: { A, B }, epoch });
-            }
-        }, (error) => {
-            destroyCreated();
-            if (!signal.aborted) {
-                dispatch({ type: "modelsFailed", error });
-            }
-        });
+        Promise.all([createModel("A", personas.A), createModel("B", personas.B)]).then(
+            ([A, B]) => {
+                if (!signal.aborted) {
+                    setReady({ models: { A, B }, epoch });
+                }
+            },
+            (error) => {
+                destroyCreated();
+                if (!signal.aborted) {
+                    dispatch({ type: "modelsFailed", error });
+                }
+            },
+        );
         return () => {
             controller.abort();
             destroyCreated();
@@ -96,16 +101,22 @@ export function useModels(dispatch: Dispatch<ModelEvent>, enabled: boolean, pers
 
     const models = ready?.epoch === epoch ? ready.models : null;
 
-    return useMemo(() => models && {
-        prompt: (participant, text, signal) => models[participant].prompt(text, { signal }),
-        // Called after each turn, so the next turn starts on fresh models.
-        resetIfNeeded: (turnNumber) => {
-            const isTurnLimitReached = turnNumber % maxTurnsBeforeModelReset === 0;
-            const isContextNearlyFull = Object.values(models).some((model) =>
-                model.contextWindow > 0 && model.contextUsage / model.contextWindow >= maxContextUsageRatio);
-            if (isTurnLimitReached || isContextNearlyFull) {
-                setEpoch((current) => current + 1);
-            }
-        },
-    }, [models]);
+    return useMemo(
+        () =>
+            models && {
+                prompt: (participant, text, signal) => models[participant].prompt(text, { signal }),
+                // Called after each turn, so the next turn starts on fresh models.
+                resetIfNeeded: (turnNumber) => {
+                    const isTurnLimitReached = turnNumber % maxTurnsBeforeModelReset === 0;
+                    const isContextNearlyFull = Object.values(models).some(
+                        (model) =>
+                            model.contextWindow > 0 && model.contextUsage / model.contextWindow >= maxContextUsageRatio,
+                    );
+                    if (isTurnLimitReached || isContextNearlyFull) {
+                        setEpoch((current) => current + 1);
+                    }
+                },
+            },
+        [models],
+    );
 }

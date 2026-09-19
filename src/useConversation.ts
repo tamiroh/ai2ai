@@ -1,8 +1,9 @@
 import { produce } from "immer";
 import { useCallback, useEffect, useReducer, useState } from "preact/hooks";
+import type { Dispatch } from "preact/hooks";
 import { useAvailability } from "./useAvailability";
 import { sleep } from "./utils";
-import type { AvailabilityResult, AvailabilityState } from "./useAvailability";
+import type { AvailabilityState } from "./useAvailability";
 
 export type Status =
     | { kind: "idle" | "preparing" | "running" }
@@ -37,7 +38,6 @@ type State = {
 type Action =
     | { type: "start" }
     | { type: "human"; text: string }
-    | { type: "unavailable"; availability: AvailabilityResult }
     | { type: "joining" }
     | { type: "joined"; participant: AiParticipant }
     | { type: "modelsFailed"; error: unknown }
@@ -137,9 +137,6 @@ function reducer(state: State, action: Action): State {
                     draft.turn = createTurn(draft, draft.turn.number);
                 }
                 break;
-            case "unavailable":
-                finish({ kind: "availability", value: action.availability });
-                break;
             case "modelsFailed":
                 finish({ kind: "error", error: action.error });
                 break;
@@ -174,24 +171,16 @@ function reducer(state: State, action: Action): State {
     });
 }
 
-export function useConversation(): UseConversationResult {
-    const [state, dispatch] = useReducer(reducer, initialState, (state) => reducer(state, { type: "start" }));
-    const [readyModels, setReadyModels] = useState<{ models: Models; epoch: number } | null>(null);
-    const availability = useAvailability(modelOptions);
-    const { turn, settings, modelEpoch } = state;
-    const models = readyModels?.epoch === modelEpoch ? readyModels.models : null;
+function useModels(dispatch: Dispatch<Action>, settings: ConversationSettings, epoch: number, enabled: boolean): Models | null {
+    const [ready, setReady] = useState<{ models: Models; epoch: number } | null>(null);
 
     useEffect(() => {
-        if (availability.kind === "checking") {
-            return;
-        }
-        if (availability.kind === "unsupported" || availability.kind === "unavailable" || availability.kind === "error") {
-            dispatch({ type: "unavailable", availability });
+        if (!enabled) {
             return;
         }
         const controller = new AbortController();
         const { signal } = controller;
-        const isFirstEpoch = modelEpoch === 0;
+        const isFirstEpoch = epoch === 0;
         let created: Models | null = null;
         if (isFirstEpoch) {
             dispatch({ type: "joining" });
@@ -206,7 +195,7 @@ export function useConversation(): UseConversationResult {
                 return;
             }
             created = models;
-            setReadyModels({ models, epoch: modelEpoch });
+            setReady({ models, epoch });
         }, (error) => {
             if (!signal.aborted) {
                 dispatch({ type: "modelsFailed", error });
@@ -215,9 +204,19 @@ export function useConversation(): UseConversationResult {
         return () => {
             controller.abort();
             destroyModels(created);
-            setReadyModels(null);
+            setReady(null);
         };
-    }, [availability, settings, modelEpoch]);
+    }, [dispatch, enabled, settings, epoch]);
+
+    return ready?.epoch === epoch ? ready.models : null;
+}
+
+export function useConversation(): UseConversationResult {
+    const [state, dispatch] = useReducer(reducer, initialState, (state) => reducer(state, { type: "start" }));
+    const availability = useAvailability(modelOptions);
+    const { turn, settings, modelEpoch } = state;
+    const isUnavailable = availability.kind === "unsupported" || availability.kind === "unavailable" || availability.kind === "error";
+    const models = useModels(dispatch, settings, modelEpoch, availability.kind !== "checking" && !isUnavailable);
 
     const runTurn = useCallback(async (currentTurn: Turn, models: Models, controller: AbortController): Promise<void> => {
         const { signal } = controller;
@@ -251,7 +250,7 @@ export function useConversation(): UseConversationResult {
     }, []);
 
     return {
-        status: state.status ?? { kind: "availability", value: availability },
+        status: isUnavailable || !state.status ? { kind: "availability", value: availability } : state.status,
         messages: state.messages,
         typingName: state.phase === "generating" && state.turn ? state.turn.participant : null,
         sendHumanMessage,

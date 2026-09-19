@@ -75,7 +75,7 @@ function createTurn(state: State, number: number): Turn {
         settings: state.settings,
         prompt: [
             `テーマ: ${state.settings.topic}`,
-            `あなたは ${participant} です。次は ${participant === "A" ? "B" : "A"} に返答してください。`,
+            `あなたは ${participant} です。`,
             `最大 ${state.settings.maxLength} 文字。`,
             "自然な雑談として、気軽で親しみやすい口調を保ってください。",
             "2〜4文で、相手の質問に答えることを優先してください。",

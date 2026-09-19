@@ -2,14 +2,13 @@ import { css } from "../styled-system/css";
 import { token } from "../styled-system/tokens";
 import { Avatar } from "./Avatar";
 import type { AvatarColor } from "./Avatar";
-import { displayName } from "./useConversation";
-import type { AiName, DisplayMessage } from "./useConversation";
+import type { Participant, DisplayMessage } from "./useConversation";
 
 type MessageProps = {
     message: DisplayMessage;
 };
 
-const aiAvatarColors: Record<AiName, AvatarColor> = {
+const participantAvatarColors: Record<Participant, AvatarColor> = {
     A: "teal",
     B: "amber",
 };
@@ -121,9 +120,9 @@ export function Message({ message }: MessageProps) {
 
     return (
         <li className={itemStyles}>
-            <Avatar color={aiAvatarColors[message.ai]} initial={message.ai} />
+            <Avatar color={participantAvatarColors[message.participant]} initial={message.participant} />
             <div className={bodyStyles}>
-                <div className={nameStyles}>{displayName(message.ai)}</div>
+                <div className={nameStyles}>{message.participant}</div>
                 <div className={bubbleStyles}>
                     <p className={textStyles}>{message.text}</p>
                 </div>

@@ -1,7 +1,6 @@
 import { produce } from "immer";
 import { useCallback, useEffect, useReducer } from "preact/hooks";
-import { useAvailability } from "./useAvailability";
-import { modelOptions, useModels } from "./useModels";
+import { useModels } from "./useModels";
 import { sleep } from "./utils";
 import type { AvailabilityState } from "./useAvailability";
 import type { AiParticipant, ModelEvent } from "./useModels";
@@ -209,11 +208,8 @@ function reducer(state: State, action: Action): State {
 
 export function useConversation(): UseConversationResult {
     const [state, dispatch] = useReducer(reducer, initialState, (state) => reducer(state, { type: "start" }));
-    const availability = useAvailability(modelOptions);
     const { turn, settings } = state;
-    const isUnavailable =
-        availability.kind === "unsupported" || availability.kind === "unavailable" || availability.kind === "error";
-    const models = useModels(dispatch, availability.kind !== "checking" && !isUnavailable, {
+    const { models, availability, isUnavailable } = useModels(dispatch, {
         A: settings.participantA,
         B: settings.participantB,
     });

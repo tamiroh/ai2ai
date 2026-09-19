@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import type { Dispatch } from "preact/hooks";
+import { useAvailability } from "./useAvailability";
+import type { AvailabilityState } from "./useAvailability";
 
 export type AiParticipant = "A" | "B";
 
 export type ModelEvent =
     { type: "joining" } | { type: "joined"; participant: AiParticipant } | { type: "modelsFailed"; error: unknown };
 
-export const modelOptions: LanguageModelCreateCoreOptions = {
+const modelOptions: LanguageModelCreateCoreOptions = {
     expectedInputs: [{ type: "text", languages: ["ja", "en"] }],
     expectedOutputs: [{ type: "text", languages: ["ja"] }],
 };
@@ -21,11 +23,17 @@ export type ModelSet = {
     resetIfNeeded: (turnNumber: number) => void;
 };
 
-export function useModels(
-    dispatch: Dispatch<ModelEvent>,
-    enabled: boolean,
-    personas: Record<AiParticipant, string>,
-): ModelSet | null {
+type UseModelsResult = {
+    models: ModelSet | null;
+    availability: AvailabilityState;
+    isUnavailable: boolean;
+};
+
+export function useModels(dispatch: Dispatch<ModelEvent>, personas: Record<AiParticipant, string>): UseModelsResult {
+    const availability = useAvailability(modelOptions);
+    const isUnavailable =
+        availability.kind === "unsupported" || availability.kind === "unavailable" || availability.kind === "error";
+    const enabled = availability.kind !== "checking" && !isUnavailable;
     const [epoch, setEpoch] = useState(0);
     const [ready, setReady] = useState<{ models: Models; epoch: number } | null>(null);
 
@@ -101,7 +109,7 @@ export function useModels(
 
     const models = ready?.epoch === epoch ? ready.models : null;
 
-    return useMemo(
+    const modelSet = useMemo<ModelSet | null>(
         () =>
             models && {
                 prompt: (participant, text, signal) => models[participant].prompt(text, { signal }),
@@ -119,4 +127,6 @@ export function useModels(
             },
         [models],
     );
+
+    return { models: modelSet, availability, isUnavailable };
 }

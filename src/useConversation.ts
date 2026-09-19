@@ -11,10 +11,8 @@ export type Status =
 
 export type UseConversationResult = {
     status: Status;
-    running: boolean;
     messages: DisplayMessage[];
     typingName: string | null;
-    toggle: () => void;
     sendHumanMessage: (text: string) => void;
 };
 
@@ -37,7 +35,7 @@ type State = {
 };
 
 type Action =
-    | { type: "toggle" }
+    | { type: "start" }
     | { type: "human"; text: string }
     | { type: "progress"; turn: Turn; progress: number }
     | { type: "unavailable"; turn: Turn; availability: AvailabilityResult }
@@ -113,8 +111,8 @@ function reducer(state: State, action: Action): State {
         return state;
     }
     switch (action.type) {
-        case "toggle":
-            return state.turn ? finish() : beginTurn();
+        case "start":
+            return beginTurn();
         case "human":
             return {
                 ...state,
@@ -156,9 +154,8 @@ function reducer(state: State, action: Action): State {
 }
 
 export function useConversation(): UseConversationResult {
-    const [state, dispatch] = useReducer(reducer, initialState);
+    const [state, dispatch] = useReducer(reducer, initialState, (state) => reducer(state, { type: "start" }));
     const modelsRef = useRef<Models | null>(null);
-    const abortRef = useRef<AbortController | null>(null);
     const availability = useAvailability(modelOptions);
     const { turn } = state;
 
@@ -219,25 +216,9 @@ export function useConversation(): UseConversationResult {
             return;
         }
         const controller = new AbortController();
-        abortRef.current = controller;
         void runTurn(turn, controller);
-        return () => {
-            controller.abort();
-            if (abortRef.current === controller) {
-                abortRef.current = null;
-            }
-        };
+        return () => controller.abort();
     }, [turn, availability, runTurn]);
-
-    const cancel = useCallback(() => {
-        abortRef.current?.abort();
-        releaseModels();
-    }, [releaseModels]);
-
-    const toggle = useCallback(() => {
-        cancel();
-        dispatch({ type: "toggle" });
-    }, [cancel]);
 
     const sendHumanMessage = useCallback((text: string) => {
         dispatch({ type: "human", text });
@@ -245,10 +226,8 @@ export function useConversation(): UseConversationResult {
 
     return {
         status: state.status ?? { kind: "availability", value: availability },
-        running: state.phase !== "idle",
         messages: state.messages,
         typingName: state.phase === "generating" && state.turn ? `Agent ${state.turn.agent}` : null,
-        toggle,
         sendHumanMessage,
     };
 }

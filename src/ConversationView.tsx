@@ -1,15 +1,15 @@
-import type { ComponentChildren } from "preact";
 import { useRef, useState } from "preact/hooks";
 import { css } from "../styled-system/css";
 import { token } from "../styled-system/tokens";
+import { ConversationStatus } from "./ConversationStatus";
 import { Message } from "./Message";
 import { MessageComposer } from "./MessageComposer";
-import type { DisplayMessage } from "./useConversation";
+import type { DisplayMessage, Status } from "./useConversation";
 
 type ConversationViewProps = {
     messages: DisplayMessage[];
     typingName: string | null;
-    toolbar: ComponentChildren;
+    status: Status;
     onSend: (text: string) => void;
 };
 
@@ -44,7 +44,7 @@ const topFadeStyles = css({
     maskImage: `linear-gradient(to bottom, transparent, ${token("colors.panel")} 48px)`,
 });
 
-export function ConversationView({ messages, typingName, toolbar, onSend }: ConversationViewProps) {
+export function ConversationView({ messages, typingName, status, onSend }: ConversationViewProps) {
     const [isScrolled, setIsScrolled] = useState(false);
     const isStickyRef = useRef(true);
     const previousScrollTopRef = useRef(0);
@@ -69,7 +69,7 @@ export function ConversationView({ messages, typingName, toolbar, onSend }: Conv
 
     return (
         <section className={shellStyles} aria-label="AI conversation">
-            {toolbar}
+            <ConversationStatus status={status} />
             <ol className={`${listStyles} ${isScrolled ? topFadeStyles : ""}`} ref={followBottom} onScroll={handleScroll}>
                 {messages.map((message) => (
                     <Message key={message.id} message={message} />

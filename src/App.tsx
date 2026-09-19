@@ -1,5 +1,4 @@
 import { css } from "../styled-system/css";
-import { ConversationToolbar } from "./ConversationToolbar";
 import { ConversationView } from "./ConversationView";
 import { useConversation } from "./useConversation";
 
@@ -16,7 +15,7 @@ const appStyles = css({
 });
 
 export function App() {
-    const { status, running, messages, typingName, toggle, sendHumanMessage } = useConversation();
+    const { status, messages, typingName, sendHumanMessage } = useConversation();
 
     return (
         <main className={appStyles}>
@@ -24,7 +23,7 @@ export function App() {
                 messages={messages}
                 typingName={typingName}
                 onSend={sendHumanMessage}
-                toolbar={<ConversationToolbar status={status} running={running} onToggle={toggle} />}
+                status={status}
             />
         </main>
     );

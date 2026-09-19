@@ -31,11 +31,11 @@ export default defineConfig({
         extend: {
             tokens: {
                 colors: {
-                    bg: { value: "#f5f2ea" },
+                    bg: { value: "#e8eef6" },
                     panel: { value: "#ffffff" },
                     ink: { value: "#202124" },
                     muted: { value: "#64676d" },
-                    line: { value: "#d8d2c4" },
+                    line: { value: "#c5cfdd" },
                     accent: { value: "#0b6b5c" },
                     danger: { value: "#b3261e" },
                     accentStrong: { value: "color-mix(in srgb, {colors.accent} 75%, {colors.ink})" },

@@ -214,6 +214,10 @@ export function useConversation(): UseConversationResult {
         B: settings.participantB,
     });
 
+    const sendHumanMessage = useCallback((text: string) => {
+        dispatch({ type: "human", text });
+    }, []);
+
     useEffect(() => {
         if (!turn || !models) {
             return;
@@ -238,10 +242,6 @@ export function useConversation(): UseConversationResult {
         void runTurn();
         return () => controller.abort();
     }, [turn, models]);
-
-    const sendHumanMessage = useCallback((text: string) => {
-        dispatch({ type: "human", text });
-    }, []);
 
     return {
         status: isUnavailable || !state.status ? { kind: "availability", value: availability } : state.status,

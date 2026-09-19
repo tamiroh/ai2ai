@@ -20,10 +20,16 @@ const panelSectionStyles = css({
     boxShadow: "panel",
     display: "flex",
     flexDirection: "column",
-    gap: "18px",
+    gap: "28px",
     overflow: "auto",
     borderRadius: "8px",
     padding: "22px",
+});
+
+const bottomStyles = css({
+    marginTop: "12px",
+    display: "grid",
+    gap: "12px",
 });
 
 const fieldStyles = css({
@@ -208,25 +214,27 @@ export function ControlPanel({ status, running, settings, onSettingsChange, onTo
                 </label>
             </div>
 
-            <div className={actionsStyles}>
-                <button
-                    className={`${startButtonStyles} ${isBusy ? busyButtonStyles : ""}`}
-                    type="button"
-                    title={buttonTitle}
-                    aria-label={running ? "停止" : "開始"}
-                    onClick={onToggle}
-                >
-                    {buttonLabel}
-                </button>
-                <button className={clearButtonStyles} type="button" onClick={onClear}>
-                    消去
-                </button>
+            <div className={bottomStyles}>
+                <div className={actionsStyles}>
+                    <button
+                        className={`${startButtonStyles} ${isBusy ? busyButtonStyles : ""}`}
+                        type="button"
+                        title={buttonTitle}
+                        aria-label={running ? "停止" : "開始"}
+                        onClick={onToggle}
+                    >
+                        {buttonLabel}
+                    </button>
+                    <button className={clearButtonStyles} type="button" onClick={onClear}>
+                        消去
+                    </button>
+                </div>
+                {displayStatus.kind === "error" && (
+                    <p className={statusErrorStyles} role="alert">
+                        {displayStatus.title}：{displayStatus.detail}
+                    </p>
+                )}
             </div>
-            {displayStatus.kind === "error" && (
-                <p className={statusErrorStyles} role="alert">
-                    {displayStatus.title}：{displayStatus.detail}
-                </p>
-            )}
         </section>
     );
 }

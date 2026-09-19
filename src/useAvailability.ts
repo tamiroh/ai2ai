@@ -11,11 +11,9 @@ export function useAvailability(options: LanguageModelCreateCoreOptions) {
 
     useEffect(() => {
         let active = true;
-        async function check() {
-            const result = await checkAvailability(options);
+        void checkAvailability(options).then((result) => {
             if (active) setAvailability(result);
-        }
-        void check();
+        });
         return () => {
             active = false;
         };

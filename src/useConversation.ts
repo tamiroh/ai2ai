@@ -261,6 +261,7 @@ function reducer(state: State, action: Action): State {
 export function useConversation(): UseConversationResult {
     const [state, dispatch] = useReducer(reducer, initialState, (state) => reducer(state, { type: "start" }));
     const { turn, settings } = state;
+
     const onError = useCallback((error: unknown) => {
         dispatch({ type: "modelsFailed", error });
     }, []);
@@ -290,19 +291,25 @@ export function useConversation(): UseConversationResult {
         if (!turn || !modelA || !modelB) {
             return;
         }
+
         const controller = new AbortController();
         const runTurn = async () => {
             try {
                 await sleep(readingDelayMs(turn.precedingLength), controller.signal);
+
                 dispatch({ type: "generating", turn });
+
                 const startedAt = Date.now();
                 const output = (
                     await (turn.participant === "A" ? modelA : modelB).prompt(turn.prompt, {
                         signal: controller.signal,
                     })
                 ).trim();
+
                 await sleep(typingDelayMs(output.length) - (Date.now() - startedAt), controller.signal);
+
                 dispatch({ type: "completed", turn, text: output });
+
                 const isTurnLimitReached = turn.number % maxTurnsBeforeModelReset === 0;
                 for (const model of [modelA, modelB]) {
                     if (
@@ -312,6 +319,7 @@ export function useConversation(): UseConversationResult {
                         model.reset();
                     }
                 }
+
                 dispatch({ type: "next", turn });
             } catch (error) {
                 if (!controller.signal.aborted) {
@@ -321,6 +329,7 @@ export function useConversation(): UseConversationResult {
             }
         };
         void runTurn();
+
         return () => controller.abort();
     }, [turn, modelA, modelB]);
 

@@ -33,8 +33,7 @@ export function useModel(
         }
         const controller = new AbortController();
         const { signal } = controller;
-        let created: LanguageModel | null = null;
-        LanguageModel.create({
+        const creation = LanguageModel.create({
             ...modelOptions,
             signal,
             initialPrompts: [
@@ -56,27 +55,29 @@ export function useModel(
                     ].join("\n"),
                 },
             ],
-        }).then(
-            (model) => {
-                if (signal.aborted) {
-                    model.destroy();
-                    return;
-                }
-                created = model;
+        });
+        const join = async () => {
+            try {
+                const model = await creation;
+                signal.throwIfAborted();
                 if (epoch === 0) {
                     dispatch({ type: "joined", participant });
                 }
                 setReady({ model, epoch });
-            },
-            (error) => {
+            } catch (error) {
                 if (!signal.aborted) {
                     dispatch({ type: "modelsFailed", error });
                 }
-            },
-        );
+            }
+        };
+        void join();
         return () => {
             controller.abort();
-            created?.destroy();
+            // The model may resolve after this cleanup, so it is destroyed whenever it does.
+            creation.then(
+                (model) => model.destroy(),
+                () => {},
+            );
             setReady(null);
         };
     }, [dispatch, participant, persona, enabled, epoch]);

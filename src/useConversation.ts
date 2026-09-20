@@ -36,6 +36,7 @@ export type SystemDisplayMessage = {
 export type HumanDisplayMessage = {
     id: string;
     kind: "human";
+    name: string;
     text: string;
 };
 
@@ -227,7 +228,12 @@ function reducer(state: State, action: Action): State {
                 draft.humanName = action.name;
                 break;
             case "human":
-                draft.messages.push({ id: `human-${draft.messages.length}`, kind: "human", text: action.text });
+                draft.messages.push({
+                    id: `human-${draft.messages.length}`,
+                    kind: "human",
+                    name: draft.humanName ?? "ユーザー",
+                    text: action.text,
+                });
                 appendHistory({ speaker: "human", text: action.text });
                 // A turn still being prepared or generated was built without this message, so redo it.
                 if (draft.turn && (draft.phase === "preparing" || draft.phase === "generating")) {

@@ -117,7 +117,7 @@ export function ConversationView({
                         case "system":
                             return <MessageBySystem key={message.id} text={describeSystemEvent(message.event)} />;
                         case "human":
-                            return <MessageBySelf key={message.id} text={message.text} />;
+                            return <MessageBySelf key={message.id} name={message.name} text={message.text} />;
                         case "ai":
                             return (
                                 <MessageByOther

@@ -10,12 +10,10 @@ export const modelOptions: LanguageModelCreateCoreOptions = {
     expectedOutputs: [{ type: "text", languages: ["ja"] }],
 };
 
-const maxTurnsBeforeModelReset = 16;
-const maxContextUsageRatio = 0.65;
-
 export type ModelHandle = {
     prompt: (text: string, signal: AbortSignal) => Promise<string>;
-    resetIfNeeded: (turnNumber: number) => void;
+    getContextUsageRatio: () => number;
+    reset: () => void;
 };
 
 type ModelState = { instance: LanguageModel | null; epoch: number };
@@ -91,15 +89,9 @@ export function useModel(
         () =>
             instance && {
                 prompt: (text, signal) => instance.prompt(text, { signal }),
-                resetIfNeeded: (turnNumber) => {
-                    const isTurnLimitReached = turnNumber % maxTurnsBeforeModelReset === 0;
-                    const isContextNearlyFull =
-                        instance.contextWindow > 0 &&
-                        instance.contextUsage / instance.contextWindow >= maxContextUsageRatio;
-                    if (isTurnLimitReached || isContextNearlyFull) {
-                        reset();
-                    }
-                },
+                getContextUsageRatio: () =>
+                    instance.contextWindow > 0 ? instance.contextUsage / instance.contextWindow : 0,
+                reset,
             },
         [instance, reset],
     );

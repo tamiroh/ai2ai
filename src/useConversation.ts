@@ -83,6 +83,8 @@ type Action =
     | { type: "error"; turn: Turn; error: unknown };
 
 const maxRecentMessages = 8;
+const maxTurnsBeforeModelReset = 16;
+const maxContextUsageRatio = 0.65;
 
 const initialStatus: Status = { kind: "idle" };
 const initialState: State = {
@@ -244,8 +246,12 @@ export function useConversation(): UseConversationResult {
                 ).trim();
                 await sleep(typingDelayMs(output.length) - (Date.now() - startedAt), controller.signal);
                 dispatch({ type: "completed", turn, text: output });
-                modelA.resetIfNeeded(turn.number);
-                modelB.resetIfNeeded(turn.number);
+                const isTurnLimitReached = turn.number % maxTurnsBeforeModelReset === 0;
+                for (const model of [modelA, modelB]) {
+                    if (isTurnLimitReached || model.getContextUsageRatio() >= maxContextUsageRatio) {
+                        model.reset();
+                    }
+                }
                 dispatch({ type: "next", turn });
             } catch (error) {
                 if (!controller.signal.aborted) {

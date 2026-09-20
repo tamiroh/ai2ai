@@ -2,8 +2,7 @@ import { css } from "../styled-system/css";
 import { token } from "../styled-system/tokens";
 import { Avatar } from "./Avatar";
 import type { AvatarColor } from "./Avatar";
-import type { DisplayMessage, SystemEvent } from "./useConversation";
-import type { AiParticipant } from "./useModel";
+import type { AiParticipant, DisplayMessage, SystemEvent } from "./useConversation";
 
 type MessageProps = {
     message: DisplayMessage;

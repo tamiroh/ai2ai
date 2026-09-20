@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo, useReducer } from "preact/hooks";
 import { useModel } from "./useModel";
 import { sleep } from "./utils";
 import type { AvailabilityState } from "./useAvailability";
-import type { AiParticipant } from "./useModel";
+
+export type AiParticipant = "A" | "B";
 
 export type Participant = AiParticipant | "human";
 
@@ -216,6 +217,17 @@ function reducer(state: State, action: Action): State {
                 finish({ kind: "error", error: action.error });
                 break;
             case "joined":
+                // The model is recreated on every reset, but a participant joins only once.
+                if (
+                    draft.messages.some(
+                        (message) =>
+                            message.kind === "system" &&
+                            message.event.type === "joined" &&
+                            message.event.participant === action.participant,
+                    )
+                ) {
+                    break;
+                }
                 addSystemMessage({ type: "joined", participant: action.participant });
                 break;
             case "generating":
@@ -250,11 +262,11 @@ export function useConversation(): UseConversationResult {
         dispatch({ type: "modelsFailed", error });
     }, []);
     const callbacksA = useMemo(
-        () => ({ onJoined: () => dispatch({ type: "joined", participant: "A" }), onError }),
+        () => ({ onCreated: () => dispatch({ type: "joined", participant: "A" }), onError }),
         [onError],
     );
     const callbacksB = useMemo(
-        () => ({ onJoined: () => dispatch({ type: "joined", participant: "B" }), onError }),
+        () => ({ onCreated: () => dispatch({ type: "joined", participant: "B" }), onError }),
         [onError],
     );
     const { model: modelA, availability: availabilityA } = useModel({

@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import { useAvailability } from "./useAvailability";
 import type { AvailabilityState } from "./useAvailability";
 
-export type AiParticipant = "A" | "B";
-
 export type Model = Pick<LanguageModel, "prompt" | "contextUsage" | "contextWindow"> & {
     reset: () => void;
 };
@@ -15,12 +13,12 @@ type UseModelResult = { model: Model | null; availability: AvailabilityState };
 type UseModelOptions = {
     modelOptions: Omit<LanguageModelCreateOptions, "signal">;
     callbacks: {
-        onJoined: () => void;
+        onCreated: () => void;
         onError: (error: unknown) => void;
     };
 };
 
-export function useModel({ modelOptions, callbacks: { onJoined, onError } }: UseModelOptions): UseModelResult {
+export function useModel({ modelOptions, callbacks: { onCreated, onError } }: UseModelOptions): UseModelResult {
     const availability = useAvailability(modelOptions);
     const enabled =
         availability.kind === "available" ||
@@ -48,9 +46,7 @@ export function useModel({ modelOptions, callbacks: { onJoined, onError } }: Use
         creation
             .then((created) => {
                 controller.signal.throwIfAborted();
-                if (epoch === 0) {
-                    onJoined();
-                }
+                onCreated();
                 setInstance(created);
             })
             .catch((error) => {
@@ -66,7 +62,7 @@ export function useModel({ modelOptions, callbacks: { onJoined, onError } }: Use
             );
             setInstance(null);
         };
-    }, [modelOptions, onJoined, onError, enabled, epoch, setInstance]);
+    }, [modelOptions, onCreated, onError, enabled, epoch, setInstance]);
 
     const model = useMemo<Model | null>(
         () =>

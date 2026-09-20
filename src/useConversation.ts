@@ -234,20 +234,21 @@ export function useConversation(): UseConversationResult {
             return;
         }
         const controller = new AbortController();
-        const { signal } = controller;
         const runTurn = async () => {
             try {
-                await sleep(readingDelayMs(turn.precedingLength), signal);
+                await sleep(readingDelayMs(turn.precedingLength), controller.signal);
                 dispatch({ type: "generating", turn });
                 const startedAt = Date.now();
-                const output = (await (turn.participant === "A" ? modelA : modelB).prompt(turn.prompt, signal)).trim();
-                await sleep(typingDelayMs(output.length) - (Date.now() - startedAt), signal);
+                const output = (
+                    await (turn.participant === "A" ? modelA : modelB).prompt(turn.prompt, controller.signal)
+                ).trim();
+                await sleep(typingDelayMs(output.length) - (Date.now() - startedAt), controller.signal);
                 dispatch({ type: "completed", turn, text: output });
                 modelA.resetIfNeeded(turn.number);
                 modelB.resetIfNeeded(turn.number);
                 dispatch({ type: "next", turn });
             } catch (error) {
-                if (!signal.aborted) {
+                if (!controller.signal.aborted) {
                     controller.abort();
                     dispatch({ type: "error", turn, error });
                 }

@@ -32,10 +32,9 @@ export function useModel(
             return;
         }
         const controller = new AbortController();
-        const { signal } = controller;
         const creation = LanguageModel.create({
             ...modelOptions,
-            signal,
+            signal: controller.signal,
             initialPrompts: [
                 {
                     role: "system",
@@ -58,14 +57,14 @@ export function useModel(
         });
         creation
             .then((model) => {
-                signal.throwIfAborted();
+                controller.signal.throwIfAborted();
                 if (epoch === 0) {
                     dispatch({ type: "joined", participant });
                 }
                 setReady({ model, epoch });
             })
             .catch((error) => {
-                if (!signal.aborted) {
+                if (!controller.signal.aborted) {
                     dispatch({ type: "modelsFailed", error });
                 }
             });

@@ -24,6 +24,7 @@ const textareaStyles = css({
     padding: "9px 18px",
     lineHeight: "24px",
     resize: "none",
+    fieldSizing: "content",
     outline: "none",
     _focus: {
         boxShadow: `0 0 0 3px ${token("colors.focusRing")}`,
@@ -72,6 +73,12 @@ export function MessageComposer({ onSend }: MessageComposerProps) {
                 aria-label="メッセージ"
                 value={text}
                 onInput={(event) => setText(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                    if (event.key === "Enter" && event.shiftKey && !event.isComposing) {
+                        event.preventDefault();
+                        event.currentTarget.form?.requestSubmit();
+                    }
+                }}
             />
             <button className={sendButtonStyles} type="submit" disabled={!trimmed}>
                 送信

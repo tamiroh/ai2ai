@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import type { Dispatch } from "preact/hooks";
 
 export type AiParticipant = "A" | "B";
@@ -18,16 +18,23 @@ export type ModelHandle = {
     resetIfNeeded: (turnNumber: number) => void;
 };
 
+type ModelState = { instance: LanguageModel | null; epoch: number };
+
 export function useModel(
     dispatch: Dispatch<ModelEvent>,
     participant: AiParticipant,
     persona: string,
     enabled: boolean,
 ): ModelHandle | null {
-    const [{ instance, epoch }, setModel] = useState<{ instance: LanguageModel | null; epoch: number }>({
-        instance: null,
-        epoch: 0,
-    });
+    const [{ instance, epoch }, setModel] = useState<ModelState>({ instance: null, epoch: 0 });
+
+    const setInstance = useCallback((instance: LanguageModel | null) => {
+        setModel((state) => ({ ...state, instance }));
+    }, []);
+
+    const reset = useCallback(() => {
+        setModel((state) => ({ instance: null, epoch: state.epoch + 1 }));
+    }, []);
 
     useEffect(() => {
         if (!enabled) {
@@ -63,7 +70,7 @@ export function useModel(
                 if (epoch === 0) {
                     dispatch({ type: "joined", participant });
                 }
-                setModel((current) => ({ ...current, instance: created }));
+                setInstance(created);
             })
             .catch((error) => {
                 if (!controller.signal.aborted) {
@@ -76,9 +83,9 @@ export function useModel(
                 (created) => created.destroy(),
                 () => {},
             );
-            setModel((current) => ({ ...current, instance: null }));
+            setInstance(null);
         };
-    }, [dispatch, participant, persona, enabled, epoch]);
+    }, [dispatch, participant, persona, enabled, epoch, setInstance]);
 
     return useMemo<ModelHandle | null>(
         () =>
@@ -90,10 +97,10 @@ export function useModel(
                         instance.contextWindow > 0 &&
                         instance.contextUsage / instance.contextWindow >= maxContextUsageRatio;
                     if (isTurnLimitReached || isContextNearlyFull) {
-                        setModel((current) => ({ instance: null, epoch: current.epoch + 1 }));
+                        reset();
                     }
                 },
             },
-        [instance],
+        [instance, reset],
     );
 }

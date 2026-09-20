@@ -1,9 +1,8 @@
 import { css } from "../styled-system/css";
 import { token } from "../styled-system/tokens";
-import type { SystemDisplayMessage, SystemEvent } from "./useConversation";
 
 type MessageBySystemProps = {
-    message: SystemDisplayMessage;
+    text: string;
 };
 
 const styles = css({
@@ -18,15 +17,6 @@ const styles = css({
     textAlign: "center",
 });
 
-function describeSystemEvent(event: SystemEvent): string {
-    switch (event.type) {
-        case "joining":
-            return "参加者を待っています…";
-        case "joined":
-            return `${event.participant} が参加しました`;
-    }
-}
-
-export function MessageBySystem({ message }: MessageBySystemProps) {
-    return <li className={styles}>{describeSystemEvent(message.event)}</li>;
+export function MessageBySystem({ text }: MessageBySystemProps) {
+    return <li className={styles}>{text}</li>;
 }

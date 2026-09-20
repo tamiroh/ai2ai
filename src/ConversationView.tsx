@@ -6,7 +6,22 @@ import { MessageBySelf } from "./MessageBySelf";
 import { MessageByOther } from "./MessageByOther";
 import { MessageBySystem } from "./MessageBySystem";
 import { MessageComposer } from "./MessageComposer";
-import type { DisplayMessage, Status } from "./useConversation";
+import type { AvatarColor } from "./Avatar";
+import type { AiParticipant, DisplayMessage, Status, SystemEvent } from "./useConversation";
+
+const participantAvatarColors: Record<AiParticipant, AvatarColor> = {
+    A: "teal",
+    B: "amber",
+};
+
+function describeSystemEvent(event: SystemEvent): string {
+    switch (event.type) {
+        case "joining":
+            return "参加者を待っています…";
+        case "joined":
+            return `${event.participant} が参加しました`;
+    }
+}
 
 type ConversationViewProps = {
     messages: DisplayMessage[];
@@ -84,11 +99,18 @@ export function ConversationView({ messages, typingName, status, onSend }: Conve
                 {messages.map((message) => {
                     switch (message.kind) {
                         case "system":
-                            return <MessageBySystem key={message.id} message={message} />;
+                            return <MessageBySystem key={message.id} text={describeSystemEvent(message.event)} />;
                         case "human":
-                            return <MessageBySelf key={message.id} message={message} />;
+                            return <MessageBySelf key={message.id} text={message.text} />;
                         case "ai":
-                            return <MessageByOther key={message.id} message={message} />;
+                            return (
+                                <MessageByOther
+                                    key={message.id}
+                                    name={message.participant}
+                                    avatarColor={participantAvatarColors[message.participant]}
+                                    text={message.text || "(空の応答)"}
+                                />
+                            );
                     }
                 })}
             </ol>

@@ -1,15 +1,11 @@
 import { css } from "../styled-system/css";
 import { Avatar } from "./Avatar";
 import type { AvatarColor } from "./Avatar";
-import type { AiDisplayMessage, AiParticipant } from "./useConversation";
 
 type MessageByOtherProps = {
-    message: AiDisplayMessage;
-};
-
-const participantAvatarColors: Record<AiParticipant, AvatarColor> = {
-    A: "teal",
-    B: "amber",
+    name: string;
+    avatarColor: AvatarColor;
+    text: string;
 };
 
 const itemStyles = css({
@@ -60,14 +56,14 @@ const textStyles = css({
     lineHeight: 1.65,
 });
 
-export function MessageByOther({ message }: MessageByOtherProps) {
+export function MessageByOther({ name, avatarColor, text }: MessageByOtherProps) {
     return (
         <li className={itemStyles}>
-            <Avatar color={participantAvatarColors[message.participant]} initial={message.participant} />
+            <Avatar color={avatarColor} initial={name} />
             <div className={bodyStyles}>
-                <div className={nameStyles}>{message.participant}</div>
+                <div className={nameStyles}>{name}</div>
                 <div className={bubbleStyles}>
-                    <p className={textStyles}>{message.text || "(空の応答)"}</p>
+                    <p className={textStyles}>{text}</p>
                 </div>
             </div>
         </li>

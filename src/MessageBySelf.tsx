@@ -1,8 +1,7 @@
 import { css } from "../styled-system/css";
-import type { HumanDisplayMessage } from "./useConversation";
 
 type MessageBySelfProps = {
-    message: HumanDisplayMessage;
+    text: string;
 };
 
 const itemStyles = css({
@@ -37,11 +36,11 @@ const textStyles = css({
     lineHeight: 1.65,
 });
 
-export function MessageBySelf({ message }: MessageBySelfProps) {
+export function MessageBySelf({ text }: MessageBySelfProps) {
     return (
         <li className={itemStyles}>
             <div className={bubbleStyles}>
-                <p className={textStyles}>{message.text}</p>
+                <p className={textStyles}>{text}</p>
             </div>
         </li>
     );

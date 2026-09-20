@@ -1,9 +1,10 @@
 import { produce } from "immer";
 import { useCallback, useEffect, useReducer } from "preact/hooks";
-import { useModels } from "./useModels";
+import { useAvailability } from "./useAvailability";
+import { modelOptions, useModel } from "./useModel";
 import { sleep } from "./utils";
 import type { AvailabilityState } from "./useAvailability";
-import type { AiParticipant, ModelEvent } from "./useModels";
+import type { AiParticipant, ModelEvent } from "./useModel";
 
 export type Participant = AiParticipant | "human";
 
@@ -219,17 +220,25 @@ function reducer(state: State, action: Action): State {
 export function useConversation(): UseConversationResult {
     const [state, dispatch] = useReducer(reducer, initialState, (state) => reducer(state, { type: "start" }));
     const { turn, settings } = state;
-    const { models, availability, isUnavailable } = useModels(dispatch, {
-        A: settings.participantA,
-        B: settings.participantB,
-    });
+    const availability = useAvailability(modelOptions);
+    const isUnavailable =
+        availability.kind === "unsupported" || availability.kind === "unavailable" || availability.kind === "error";
+    const isModelEnabled = availability.kind !== "checking" && !isUnavailable;
+    const modelA = useModel(dispatch, "A", settings.participantA, isModelEnabled);
+    const modelB = useModel(dispatch, "B", settings.participantB, isModelEnabled);
+
+    useEffect(() => {
+        if (isModelEnabled) {
+            dispatch({ type: "joining" });
+        }
+    }, [isModelEnabled]);
 
     const sendHumanMessage = useCallback((text: string) => {
         dispatch({ type: "human", text });
     }, []);
 
     useEffect(() => {
-        if (!turn || !models) {
+        if (!turn || !modelA || !modelB) {
             return;
         }
         const controller = new AbortController();
@@ -239,10 +248,11 @@ export function useConversation(): UseConversationResult {
                 await sleep(readingDelayMs(turn.precedingLength), signal);
                 dispatch({ type: "generating", turn });
                 const startedAt = Date.now();
-                const output = (await models.prompt(turn.participant, turn.prompt, signal)).trim();
+                const output = (await (turn.participant === "A" ? modelA : modelB).prompt(turn.prompt, signal)).trim();
                 await sleep(typingDelayMs(output.length) - (Date.now() - startedAt), signal);
                 dispatch({ type: "completed", turn, text: output });
-                models.resetIfNeeded(turn.number);
+                modelA.resetIfNeeded(turn.number);
+                modelB.resetIfNeeded(turn.number);
                 dispatch({ type: "next", turn });
             } catch (error) {
                 if (!signal.aborted) {
@@ -253,7 +263,7 @@ export function useConversation(): UseConversationResult {
         };
         void runTurn();
         return () => controller.abort();
-    }, [turn, models]);
+    }, [turn, modelA, modelB]);
 
     return {
         status: isUnavailable || !state.status ? { kind: "availability", value: availability } : state.status,

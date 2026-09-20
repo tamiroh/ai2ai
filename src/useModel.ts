@@ -56,24 +56,21 @@ export function useModel(
                 },
             ],
         });
-        const join = async () => {
-            try {
-                const model = await creation;
+        creation
+            .then((model) => {
                 signal.throwIfAborted();
                 if (epoch === 0) {
                     dispatch({ type: "joined", participant });
                 }
                 setReady({ model, epoch });
-            } catch (error) {
+            })
+            .catch((error) => {
                 if (!signal.aborted) {
                     dispatch({ type: "modelsFailed", error });
                 }
-            }
-        };
-        void join();
+            });
         return () => {
             controller.abort();
-            // The model may resolve after this cleanup, so it is destroyed whenever it does.
             creation.then(
                 (model) => model.destroy(),
                 () => {},

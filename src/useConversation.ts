@@ -50,6 +50,8 @@ export type UseConversationResult = {
     status: Status;
     messages: DisplayMessage[];
     typingName: string | null;
+    humanName: string | null;
+    setHumanName: (name: string) => void;
     sendHumanMessage: (text: string) => void;
 };
 
@@ -68,6 +70,7 @@ type Turn = {
 type State = {
     settings: ConversationSettings;
     names: Record<AiParticipant, string>;
+    humanName: string | null;
     status: Status | null;
     messages: DisplayMessage[];
     history: PromptMessage[];
@@ -78,6 +81,7 @@ type State = {
 
 type Action =
     | { type: "start" }
+    | { type: "humanNamed"; name: string }
     | { type: "human"; text: string }
     | { type: "joined"; participant: AiParticipant }
     | { type: "modelsFailed"; error: unknown }
@@ -127,6 +131,7 @@ function pickParticipantNames(): Record<AiParticipant, string> {
 const initialStatus: Status = { kind: "idle" };
 const initialState: State = {
     names: { A: "", B: "" },
+    humanName: null,
     settings: {
         topic: "ふたりが、最近ちょっと楽しかったことや気になることを、ゆるく話し続ける。",
         participantA: "穏やかで聞き上手。相手の話に乗りながら、日常の小さな発見を楽しむ。",
@@ -153,10 +158,11 @@ function typingDelayMs(length: number): number {
 
 // Freeze the inputs for a turn; the prompt is built from the history at this moment.
 function createTurn(state: State, number: number): Turn {
+    const humanName = state.humanName ?? "ユーザー";
     const participant: AiParticipant = number % 2 === 1 ? "A" : "B";
     const recentHistory = state.history.slice(-maxRecentMessages);
     const recentMessages = recentHistory
-        .map((message) => `${message.speaker === "human" ? "ユーザー" : state.names[message.speaker]}: ${message.text}`)
+        .map((message) => `${message.speaker === "human" ? humanName : state.names[message.speaker]}: ${message.text}`)
         .join("\n");
     return {
         number,
@@ -172,8 +178,8 @@ function createTurn(state: State, number: number): Turn {
             "直近の会話に未完了の話題がある場合は、その話題を続けてください。",
             ...(recentHistory.some((message) => message.speaker === "human")
                 ? [
-                      `参加者は ${state.names.A}、${state.names.B}、人間のユーザーの 3 人です。`,
-                      `発言の冒頭に「${state.names[participant === "A" ? "B" : "A"]}さん、」「ユーザーさん、」のように宛名を付け、誰に向けた言葉かをはっきりさせてください。「あなた」だけで呼ばないでください。`,
+                      `参加者は ${state.names.A}、${state.names.B}、人間の ${humanName} の 3 人です。`,
+                      `発言の冒頭に「${state.names[participant === "A" ? "B" : "A"]}さん、」「${humanName}さん、」のように宛名を付け、誰に向けた言葉かをはっきりさせてください。「あなた」だけで呼ばないでください。`,
                       "直近の発言が他の参加者宛てなら、その人の代わりに答えず、感想や一言を添える程度にしてください。あなた宛て、または全員宛てなら、まず答えてください。",
                   ]
                 : []),
@@ -216,6 +222,9 @@ function reducer(state: State, action: Action): State {
             case "start":
                 addSystemMessage({ type: "joining" });
                 beginTurn();
+                break;
+            case "humanNamed":
+                draft.humanName = action.name;
                 break;
             case "human":
                 draft.messages.push({ id: `human-${draft.messages.length}`, kind: "human", text: action.text });
@@ -305,6 +314,10 @@ export function useConversation(): UseConversationResult {
         availabilities.find(({ kind }) => kind === "unsupported" || kind === "unavailable" || kind === "error") ??
         availabilities.find(({ kind }) => kind === "checking");
 
+    const setHumanName = useCallback((name: string) => {
+        dispatch({ type: "humanNamed", name });
+    }, []);
+
     const sendHumanMessage = useCallback((text: string) => {
         dispatch({ type: "human", text });
     }, []);
@@ -361,6 +374,8 @@ export function useConversation(): UseConversationResult {
             : (state.status ?? initialStatus),
         messages: state.messages,
         typingName: state.phase === "generating" && state.turn ? state.names[state.turn.participant] : null,
+        humanName: state.humanName,
+        setHumanName,
         sendHumanMessage,
     };
 }

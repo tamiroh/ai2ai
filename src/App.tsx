@@ -15,11 +15,18 @@ const appStyles = css({
 });
 
 export function App() {
-    const { status, messages, typingName, sendHumanMessage } = useConversation();
+    const { status, messages, typingName, humanName, setHumanName, sendHumanMessage } = useConversation();
 
     return (
         <main className={appStyles}>
-            <ConversationView messages={messages} typingName={typingName} onSend={sendHumanMessage} status={status} />
+            <ConversationView
+                messages={messages}
+                typingName={typingName}
+                humanName={humanName}
+                onSetHumanName={setHumanName}
+                onSend={sendHumanMessage}
+                status={status}
+            />
         </main>
     );
 }

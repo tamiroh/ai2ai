@@ -6,6 +6,7 @@ import { MessageBySelf } from "./MessageBySelf";
 import { MessageByOther } from "./MessageByOther";
 import { MessageBySystem } from "./MessageBySystem";
 import { MessageComposer } from "./MessageComposer";
+import { NameDialog } from "./NameDialog";
 import type { AvatarColor } from "./Avatar";
 import type { AiParticipant, DisplayMessage, Status, SystemEvent } from "./useConversation";
 
@@ -27,6 +28,8 @@ type ConversationViewProps = {
     messages: DisplayMessage[];
     typingName: string | null;
     status: Status;
+    humanName: string | null;
+    onSetHumanName: (name: string) => void;
     onSend: (text: string) => void;
 };
 
@@ -65,8 +68,16 @@ const topFadeStyles = css({
     maskImage: `linear-gradient(to bottom, transparent, ${token("colors.panel")} 48px)`,
 });
 
-export function ConversationView({ messages, typingName, status, onSend }: ConversationViewProps) {
+export function ConversationView({
+    messages,
+    typingName,
+    status,
+    humanName,
+    onSetHumanName,
+    onSend,
+}: ConversationViewProps) {
     const [isScrolled, setIsScrolled] = useState(false);
+    const [pendingText, setPendingText] = useState<string | null>(null);
     const isStickyRef = useRef(true);
     const previousScrollTopRef = useRef(0);
 
@@ -86,6 +97,11 @@ export function ConversationView({ messages, typingName, status, onSend }: Conve
         if (list && isStickyRef.current) {
             list.scrollTop = list.scrollHeight;
         }
+    };
+
+    const send = (text: string) => {
+        isStickyRef.current = true;
+        onSend(text);
     };
 
     return (
@@ -117,12 +133,18 @@ export function ConversationView({ messages, typingName, status, onSend }: Conve
             <p className={typingStyles} aria-live="polite">
                 {typingName && `${typingName} が入力しています…`}
             </p>
-            <MessageComposer
-                onSend={(text) => {
-                    isStickyRef.current = true;
-                    onSend(text);
-                }}
-            />
+            <MessageComposer onSend={(text) => (humanName ? send(text) : setPendingText(text))} />
+            {pendingText !== null && (
+                <NameDialog
+                    title="あなたの名前を教えてください"
+                    submitLabel="参加する"
+                    onSubmit={(name) => {
+                        onSetHumanName(name);
+                        send(pendingText);
+                        setPendingText(null);
+                    }}
+                />
+            )}
         </section>
     );
 }

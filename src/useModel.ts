@@ -13,21 +13,14 @@ type ModelState = { instance: LanguageModel | null; epoch: number };
 type UseModelResult = { model: Model | null; availability: AvailabilityState };
 
 type UseModelOptions = {
-    modelOptions: LanguageModelCreateCoreOptions;
-    participant: AiParticipant;
-    persona: string;
+    modelOptions: Omit<LanguageModelCreateOptions, "signal">;
     callbacks: {
-        onJoined: (participant: AiParticipant) => void;
+        onJoined: () => void;
         onError: (error: unknown) => void;
     };
 };
 
-export function useModel({
-    modelOptions,
-    participant,
-    persona,
-    callbacks: { onJoined, onError },
-}: UseModelOptions): UseModelResult {
+export function useModel({ modelOptions, callbacks: { onJoined, onError } }: UseModelOptions): UseModelResult {
     const availability = useAvailability(modelOptions);
     const enabled =
         availability.kind === "available" ||
@@ -51,31 +44,12 @@ export function useModel({
         const creation = LanguageModel.create({
             ...modelOptions,
             signal: controller.signal,
-            initialPrompts: [
-                {
-                    role: "system",
-                    content: [
-                        "あなたは継続対話に参加する会話相手です。",
-                        `あなたの名前は ${participant} です。`,
-                        `人格: ${persona}`,
-                        "返答は日本語で、短めの自然なおしゃべりにしてください。",
-                        "相手の直前の発言をやさしく拾い、感想や小さな質問を添えて会話を続けてください。",
-                        "討論や結論づけより、和気あいあいとした雑談の流れを優先してください。",
-                        "相手から質問されたら、次の返答ではまず短く答えてください。",
-                        "質問で終えるのは2回に1回までにしてください。",
-                        "相手が明示的に話題にしない限り、AI、データ、解析、生成モデル、技術ニュースの話は避けてください。",
-                        "日常の出来事、食べ物、散歩、音楽、読書、天気、家事、趣味のような身近な話題を中心にしてください。",
-                        "絵文字は使わないでください。",
-                        "直前の会話と同じ表現や比喩を繰り返さないでください。",
-                    ].join("\n"),
-                },
-            ],
         });
         creation
             .then((created) => {
                 controller.signal.throwIfAborted();
                 if (epoch === 0) {
-                    onJoined(participant);
+                    onJoined();
                 }
                 setInstance(created);
             })
@@ -92,7 +66,7 @@ export function useModel({
             );
             setInstance(null);
         };
-    }, [modelOptions, onJoined, onError, participant, persona, enabled, epoch, setInstance]);
+    }, [modelOptions, onJoined, onError, enabled, epoch, setInstance]);
 
     const model = useMemo<Model | null>(
         () =>

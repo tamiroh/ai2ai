@@ -24,8 +24,10 @@ export function useModel(
     persona: string,
     enabled: boolean,
 ): ModelHandle | null {
-    const [epoch, setEpoch] = useState(0);
-    const [ready, setReady] = useState<{ model: LanguageModel; epoch: number } | null>(null);
+    const [{ instance, epoch }, setModel] = useState<{ instance: LanguageModel | null; epoch: number }>({
+        instance: null,
+        epoch: 0,
+    });
 
     useEffect(() => {
         if (!enabled) {
@@ -56,12 +58,12 @@ export function useModel(
             ],
         });
         creation
-            .then((model) => {
+            .then((created) => {
                 controller.signal.throwIfAborted();
                 if (epoch === 0) {
                     dispatch({ type: "joined", participant });
                 }
-                setReady({ model, epoch });
+                setModel((current) => ({ ...current, instance: created }));
             })
             .catch((error) => {
                 if (!controller.signal.aborted) {
@@ -71,29 +73,27 @@ export function useModel(
         return () => {
             controller.abort();
             creation.then(
-                (model) => model.destroy(),
+                (created) => created.destroy(),
                 () => {},
             );
-            setReady(null);
+            setModel((current) => ({ ...current, instance: null }));
         };
     }, [dispatch, participant, persona, enabled, epoch]);
 
-    const model = ready?.epoch === epoch ? ready.model : null;
-
     return useMemo<ModelHandle | null>(
         () =>
-            model && {
-                prompt: (text, signal) => model.prompt(text, { signal }),
-                // Called after each turn, so the next turn starts on a fresh model.
+            instance && {
+                prompt: (text, signal) => instance.prompt(text, { signal }),
                 resetIfNeeded: (turnNumber) => {
                     const isTurnLimitReached = turnNumber % maxTurnsBeforeModelReset === 0;
                     const isContextNearlyFull =
-                        model.contextWindow > 0 && model.contextUsage / model.contextWindow >= maxContextUsageRatio;
+                        instance.contextWindow > 0 &&
+                        instance.contextUsage / instance.contextWindow >= maxContextUsageRatio;
                     if (isTurnLimitReached || isContextNearlyFull) {
-                        setEpoch((current) => current + 1);
+                        setModel((current) => ({ instance: null, epoch: current.epoch + 1 }));
                     }
                 },
             },
-        [model],
+        [instance],
     );
 }

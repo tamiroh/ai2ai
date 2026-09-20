@@ -1,5 +1,5 @@
-import { css } from "../styled-system/css";
-import { token } from "../styled-system/tokens";
+import { css } from "@emotion/css";
+import { colors } from "./theme";
 
 export type AvatarColor = "teal" | "amber";
 
@@ -9,8 +9,8 @@ type AvatarProps = {
 };
 
 const avatarColors: Record<AvatarColor, string> = {
-    teal: token("colors.teal"),
-    amber: token("colors.amber"),
+    teal: colors.teal,
+    amber: colors.amber,
 };
 
 const avatarStyles = css({
@@ -20,7 +20,7 @@ const avatarStyles = css({
     width: "36px",
     height: "36px",
     borderRadius: "50%",
-    color: "panel",
+    color: colors.panel,
     fontSize: "15px",
     fontWeight: 800,
 });

@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
-import { css } from "../styled-system/css";
-import { token } from "../styled-system/tokens";
+import { css } from "@emotion/css";
+import { colors } from "./theme";
 
 type MessageComposerProps = {
     onSend: (text: string) => void;
@@ -19,15 +19,15 @@ const textareaStyles = css({
     minHeight: "44px",
     maxHeight: "160px",
     borderRadius: "22px",
-    background: "panel",
-    color: "ink",
+    background: colors.panel,
+    color: colors.ink,
     padding: "9px 18px",
     lineHeight: "24px",
     resize: "none",
     fieldSizing: "content",
     outline: "none",
-    _focus: {
-        boxShadow: `0 0 0 3px ${token("colors.focusRing")}`,
+    "&:focus": {
+        boxShadow: `0 0 0 3px ${colors.focusRing}`,
     },
 });
 
@@ -37,15 +37,15 @@ const sendButtonStyles = css({
     border: "none",
     borderRadius: "22px",
     boxShadow: "none",
-    background: "accent",
-    color: "panel",
+    background: colors.accent,
+    color: colors.panel,
     padding: "0 20px",
     fontWeight: 800,
     cursor: "pointer",
     "&:hover:not(:disabled)": {
-        background: "accentStrong",
+        background: colors.accentStrong,
     },
-    _disabled: {
+    "&:disabled": {
         cursor: "not-allowed",
         opacity: 0.48,
     },

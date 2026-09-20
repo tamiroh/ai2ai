@@ -1,5 +1,5 @@
-import { css } from "../styled-system/css";
-import { token } from "../styled-system/tokens";
+import { css } from "@emotion/css";
+import { colors } from "./theme";
 
 type NameDialogProps = {
     title: string;
@@ -13,10 +13,10 @@ const dialogStyles = css({
     borderRadius: "16px",
     padding: "24px",
     width: "min(360px, calc(100% - 24px))",
-    background: "panel",
-    color: "ink",
+    background: colors.panel,
+    color: colors.ink,
     "&::backdrop": {
-        background: `color-mix(in srgb, ${token("colors.ink")} 45%, transparent)`,
+        background: `color-mix(in srgb, ${colors.ink} 45%, transparent)`,
     },
 });
 
@@ -35,12 +35,12 @@ const titleStyles = css({
 const inputStyles = css({
     borderRadius: "22px",
     border: "1px solid",
-    borderColor: "muted",
+    borderColor: colors.muted,
     padding: "9px 18px",
     lineHeight: "24px",
     outline: "none",
-    _focus: {
-        boxShadow: `0 0 0 3px ${token("colors.focusRing")}`,
+    "&:focus": {
+        boxShadow: `0 0 0 3px ${colors.focusRing}`,
     },
 });
 
@@ -49,14 +49,14 @@ const submitStyles = css({
     border: "none",
     borderRadius: "22px",
     boxShadow: "none",
-    background: "accent",
-    color: "panel",
+    background: colors.accent,
+    color: colors.panel,
     fontWeight: 800,
     cursor: "pointer",
     "&:hover:not(:disabled)": {
-        background: "accentStrong",
+        background: colors.accentStrong,
     },
-    _disabled: {
+    "&:disabled": {
         cursor: "not-allowed",
         opacity: 0.48,
     },

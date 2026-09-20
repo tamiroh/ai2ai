@@ -1,4 +1,5 @@
-import { css } from "../styled-system/css";
+import { css } from "@emotion/css";
+import { colors } from "./theme";
 import type { Status } from "./useConversation";
 
 type ConversationStatusProps = {
@@ -9,7 +10,7 @@ const statusStyles = css({
     minHeight: "44px",
     margin: 0,
     padding: "12px 24px",
-    color: "danger",
+    color: colors.danger,
     fontSize: "13px",
     lineHeight: 1.5,
     overflowWrap: "anywhere",

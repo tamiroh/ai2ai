@@ -1,4 +1,5 @@
-import { css } from "../styled-system/css";
+import { css } from "@emotion/css";
+import { colors } from "./theme";
 
 type MessageBySelfProps = {
     text: string;
@@ -16,9 +17,9 @@ const bubbleStyles = css({
     position: "relative",
     borderRadius: "16px",
     padding: "14px 16px",
-    background: "humanBubble",
-    color: "ink",
-    _before: {
+    background: colors.humanBubble,
+    color: colors.ink,
+    "&::before": {
         content: "''",
         position: "absolute",
         top: "16px",

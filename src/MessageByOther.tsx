@@ -1,4 +1,5 @@
-import { css } from "../styled-system/css";
+import { css } from "@emotion/css";
+import { colors } from "./theme";
 import { Avatar } from "./Avatar";
 import type { AvatarColor } from "./Avatar";
 
@@ -28,7 +29,7 @@ const bodyStyles = css({
 
 const nameStyles = css({
     padding: "0 4px",
-    color: "muted",
+    color: colors.muted,
     fontSize: "12px",
     fontWeight: 800,
 });
@@ -37,8 +38,8 @@ const bubbleStyles = css({
     position: "relative",
     borderRadius: "16px",
     padding: "14px 16px",
-    background: "panel",
-    _before: {
+    background: colors.panel,
+    "&::before": {
         content: "''",
         position: "absolute",
         top: "16px",

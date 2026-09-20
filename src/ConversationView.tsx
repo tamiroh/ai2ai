@@ -1,6 +1,6 @@
 import { useRef, useState } from "preact/hooks";
-import { css } from "../styled-system/css";
-import { token } from "../styled-system/tokens";
+import { css } from "@emotion/css";
+import { colors } from "./theme";
 import { ConversationStatus } from "./ConversationStatus";
 import { MessageBySelf } from "./MessageBySelf";
 import { MessageByOther } from "./MessageByOther";
@@ -59,13 +59,13 @@ const typingStyles = css({
     minHeight: "40px",
     margin: 0,
     padding: "0 24px 14px",
-    color: "muted",
+    color: colors.muted,
     fontSize: "13px",
     fontWeight: 700,
 });
 
 const topFadeStyles = css({
-    maskImage: `linear-gradient(to bottom, transparent, ${token("colors.panel")} 48px)`,
+    maskImage: `linear-gradient(to bottom, transparent, ${colors.panel} 48px)`,
 });
 
 export function ConversationView({

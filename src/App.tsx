@@ -1,4 +1,4 @@
-import { css } from "../styled-system/css";
+import { css } from "@emotion/css";
 import { ConversationView } from "./ConversationView";
 import { useConversation } from "./useConversation";
 

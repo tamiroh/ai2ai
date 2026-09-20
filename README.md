@@ -8,5 +8,4 @@ https://tamiroh.github.io/ai2ai/
 
 - Chrome with Prompt API support
 - An environment where the local Prompt API model is available
-- Node.js 22 or newer is recommended
 

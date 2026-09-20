@@ -9,15 +9,13 @@ const modelOptions: LanguageModelCreateCoreOptions = {
     expectedOutputs: [{ type: "text", languages: ["ja"] }],
 };
 
-export type ModelHandle = {
-    prompt: (text: string, signal: AbortSignal) => Promise<string>;
-    getContextUsageRatio: () => number;
+export type Model = Pick<LanguageModel, "prompt" | "contextUsage" | "contextWindow"> & {
     reset: () => void;
 };
 
 type ModelState = { instance: LanguageModel | null; epoch: number };
 
-type UseModelResult = { model: ModelHandle | null; availability: AvailabilityState };
+type UseModelResult = { model: Model | null; availability: AvailabilityState };
 
 type UseModelOptions = {
     participant: AiParticipant;
@@ -95,12 +93,16 @@ export function useModel({ participant, persona, callbacks: { onJoined, onError 
         };
     }, [onJoined, onError, participant, persona, enabled, epoch, setInstance]);
 
-    const model = useMemo<ModelHandle | null>(
+    const model = useMemo<Model | null>(
         () =>
             instance && {
-                prompt: (text, signal) => instance.prompt(text, { signal }),
-                getContextUsageRatio: () =>
-                    instance.contextWindow > 0 ? instance.contextUsage / instance.contextWindow : 0,
+                prompt: (...args) => instance.prompt(...args),
+                get contextUsage() {
+                    return instance.contextUsage;
+                },
+                get contextWindow() {
+                    return instance.contextWindow;
+                },
                 reset,
             },
         [instance, reset],

@@ -262,13 +262,18 @@ export function useConversation(): UseConversationResult {
                 dispatch({ type: "generating", turn });
                 const startedAt = Date.now();
                 const output = (
-                    await (turn.participant === "A" ? modelA : modelB).prompt(turn.prompt, controller.signal)
+                    await (turn.participant === "A" ? modelA : modelB).prompt(turn.prompt, {
+                        signal: controller.signal,
+                    })
                 ).trim();
                 await sleep(typingDelayMs(output.length) - (Date.now() - startedAt), controller.signal);
                 dispatch({ type: "completed", turn, text: output });
                 const isTurnLimitReached = turn.number % maxTurnsBeforeModelReset === 0;
                 for (const model of [modelA, modelB]) {
-                    if (isTurnLimitReached || model.getContextUsageRatio() >= maxContextUsageRatio) {
+                    if (
+                        isTurnLimitReached ||
+                        (model.contextWindow > 0 && model.contextUsage / model.contextWindow >= maxContextUsageRatio)
+                    ) {
                         model.reset();
                     }
                 }

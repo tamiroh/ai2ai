@@ -86,6 +86,11 @@ const maxRecentMessages = 8;
 const maxTurnsBeforeModelReset = 16;
 const maxContextUsageRatio = 0.65;
 
+const modelOptions: LanguageModelCreateCoreOptions = {
+    expectedInputs: [{ type: "text", languages: ["ja", "en"] }],
+    expectedOutputs: [{ type: "text", languages: ["ja"] }],
+};
+
 const initialStatus: Status = { kind: "idle" };
 const initialState: State = {
     settings: {
@@ -232,11 +237,13 @@ export function useConversation(): UseConversationResult {
         [],
     );
     const { model: modelA, availability: availabilityA } = useModel({
+        modelOptions,
         participant: "A",
         persona: settings.participantA,
         callbacks: modelCallbacks,
     });
     const { model: modelB, availability: availabilityB } = useModel({
+        modelOptions,
         participant: "B",
         persona: settings.participantB,
         callbacks: modelCallbacks,

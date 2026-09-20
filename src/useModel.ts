@@ -4,11 +4,6 @@ import type { AvailabilityState } from "./useAvailability";
 
 export type AiParticipant = "A" | "B";
 
-const modelOptions: LanguageModelCreateCoreOptions = {
-    expectedInputs: [{ type: "text", languages: ["ja", "en"] }],
-    expectedOutputs: [{ type: "text", languages: ["ja"] }],
-};
-
 export type Model = Pick<LanguageModel, "prompt" | "contextUsage" | "contextWindow"> & {
     reset: () => void;
 };
@@ -18,6 +13,7 @@ type ModelState = { instance: LanguageModel | null; epoch: number };
 type UseModelResult = { model: Model | null; availability: AvailabilityState };
 
 type UseModelOptions = {
+    modelOptions: LanguageModelCreateCoreOptions;
     participant: AiParticipant;
     persona: string;
     callbacks: {
@@ -26,7 +22,12 @@ type UseModelOptions = {
     };
 };
 
-export function useModel({ participant, persona, callbacks: { onJoined, onError } }: UseModelOptions): UseModelResult {
+export function useModel({
+    modelOptions,
+    participant,
+    persona,
+    callbacks: { onJoined, onError },
+}: UseModelOptions): UseModelResult {
     const availability = useAvailability(modelOptions);
     const enabled =
         availability.kind === "available" ||
@@ -91,7 +92,7 @@ export function useModel({ participant, persona, callbacks: { onJoined, onError 
             );
             setInstance(null);
         };
-    }, [onJoined, onError, participant, persona, enabled, epoch, setInstance]);
+    }, [modelOptions, onJoined, onError, participant, persona, enabled, epoch, setInstance]);
 
     const model = useMemo<Model | null>(
         () =>

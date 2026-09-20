@@ -2,7 +2,9 @@ import { useRef, useState } from "preact/hooks";
 import { css } from "../styled-system/css";
 import { token } from "../styled-system/tokens";
 import { ConversationStatus } from "./ConversationStatus";
-import { Message } from "./Message";
+import { MessageBySelf } from "./MessageBySelf";
+import { MessageByOther } from "./MessageByOther";
+import { MessageBySystem } from "./MessageBySystem";
 import { MessageComposer } from "./MessageComposer";
 import type { DisplayMessage, Status } from "./useConversation";
 
@@ -79,9 +81,16 @@ export function ConversationView({ messages, typingName, status, onSend }: Conve
                 ref={followBottom}
                 onScroll={handleScroll}
             >
-                {messages.map((message) => (
-                    <Message key={message.id} message={message} />
-                ))}
+                {messages.map((message) => {
+                    switch (message.kind) {
+                        case "system":
+                            return <MessageBySystem key={message.id} message={message} />;
+                        case "human":
+                            return <MessageBySelf key={message.id} message={message} />;
+                        case "ai":
+                            return <MessageByOther key={message.id} message={message} />;
+                    }
+                })}
             </ol>
             <p className={typingStyles} aria-live="polite">
                 {typingName && `${typingName} が入力しています…`}

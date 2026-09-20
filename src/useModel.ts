@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
+import { useAvailability } from "./useAvailability";
+import type { AvailabilityState } from "./useAvailability";
 
 export type AiParticipant = "A" | "B";
 
-export const modelOptions: LanguageModelCreateCoreOptions = {
+const modelOptions: LanguageModelCreateCoreOptions = {
     expectedInputs: [{ type: "text", languages: ["ja", "en"] }],
     expectedOutputs: [{ type: "text", languages: ["ja"] }],
 };
@@ -15,22 +17,23 @@ export type ModelHandle = {
 
 type ModelState = { instance: LanguageModel | null; epoch: number };
 
+type UseModelResult = { model: ModelHandle | null; availability: AvailabilityState };
+
 type UseModelOptions = {
     participant: AiParticipant;
     persona: string;
-    enabled: boolean;
     callbacks: {
         onJoined: (participant: AiParticipant) => void;
         onError: (error: unknown) => void;
     };
 };
 
-export function useModel({
-    participant,
-    persona,
-    enabled,
-    callbacks: { onJoined, onError },
-}: UseModelOptions): ModelHandle | null {
+export function useModel({ participant, persona, callbacks: { onJoined, onError } }: UseModelOptions): UseModelResult {
+    const availability = useAvailability(modelOptions);
+    const enabled =
+        availability.kind === "available" ||
+        availability.kind === "downloadable" ||
+        availability.kind === "downloading";
     const [{ instance, epoch }, setModel] = useState<ModelState>({ instance: null, epoch: 0 });
 
     const setInstance = useCallback((instance: LanguageModel | null) => {
@@ -92,7 +95,7 @@ export function useModel({
         };
     }, [onJoined, onError, participant, persona, enabled, epoch, setInstance]);
 
-    return useMemo<ModelHandle | null>(
+    const model = useMemo<ModelHandle | null>(
         () =>
             instance && {
                 prompt: (text, signal) => instance.prompt(text, { signal }),
@@ -102,4 +105,6 @@ export function useModel({
             },
         [instance, reset],
     );
+
+    return { model, availability };
 }

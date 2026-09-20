@@ -1,7 +1,6 @@
 import { produce } from "immer";
 import { useCallback, useEffect, useMemo, useReducer } from "preact/hooks";
-import { useAvailability } from "./useAvailability";
-import { modelOptions, useModel } from "./useModel";
+import { useModel } from "./useModel";
 import { sleep } from "./utils";
 import type { AvailabilityState } from "./useAvailability";
 import type { AiParticipant } from "./useModel";
@@ -221,10 +220,6 @@ function reducer(state: State, action: Action): State {
 export function useConversation(): UseConversationResult {
     const [state, dispatch] = useReducer(reducer, initialState, (state) => reducer(state, { type: "start" }));
     const { turn, settings } = state;
-    const availability = useAvailability(modelOptions);
-    const isUnavailable =
-        availability.kind === "unsupported" || availability.kind === "unavailable" || availability.kind === "error";
-    const isModelEnabled = availability.kind !== "checking" && !isUnavailable;
     const modelCallbacks = useMemo(
         () => ({
             onJoined: (participant: AiParticipant) => {
@@ -236,18 +231,21 @@ export function useConversation(): UseConversationResult {
         }),
         [],
     );
-    const modelA = useModel({
+    const { model: modelA, availability: availabilityA } = useModel({
         participant: "A",
         persona: settings.participantA,
-        enabled: isModelEnabled,
         callbacks: modelCallbacks,
     });
-    const modelB = useModel({
+    const { model: modelB, availability: availabilityB } = useModel({
         participant: "B",
         persona: settings.participantB,
-        enabled: isModelEnabled,
         callbacks: modelCallbacks,
     });
+
+    const availabilities = [availabilityA, availabilityB];
+    const blockingAvailability =
+        availabilities.find(({ kind }) => kind === "unsupported" || kind === "unavailable" || kind === "error") ??
+        availabilities.find(({ kind }) => kind === "checking");
 
     const sendHumanMessage = useCallback((text: string) => {
         dispatch({ type: "human", text });
@@ -287,7 +285,9 @@ export function useConversation(): UseConversationResult {
     }, [turn, modelA, modelB]);
 
     return {
-        status: isUnavailable || !state.status ? { kind: "availability", value: availability } : state.status,
+        status: blockingAvailability
+            ? { kind: "availability", value: blockingAvailability }
+            : (state.status ?? initialStatus),
         messages: state.messages,
         typingName: state.phase === "generating" && state.turn ? state.turn.participant : null,
         sendHumanMessage,

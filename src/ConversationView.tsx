@@ -19,7 +19,7 @@ function describeSystemEvent(event: SystemEvent): string {
         case "joining":
             return "参加者を待っています…";
         case "joined":
-            return `${event.participant} が参加しました`;
+            return `${event.name} が参加しました`;
     }
 }
 
@@ -106,7 +106,7 @@ export function ConversationView({ messages, typingName, status, onSend }: Conve
                             return (
                                 <MessageByOther
                                     key={message.id}
-                                    name={message.participant}
+                                    name={message.name}
                                     avatarColor={participantAvatarColors[message.participant]}
                                     text={message.text || "(空の応答)"}
                                 />

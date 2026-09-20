@@ -59,7 +59,7 @@ const textStyles = css({
 export function MessageByOther({ name, avatarColor, text }: MessageByOtherProps) {
     return (
         <li className={itemStyles}>
-            <Avatar color={avatarColor} initial={name} />
+            <Avatar color={avatarColor} initial={name.charAt(0)} />
             <div className={bodyStyles}>
                 <div className={nameStyles}>{name}</div>
                 <div className={bubbleStyles}>

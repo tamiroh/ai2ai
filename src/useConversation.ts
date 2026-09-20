@@ -1,6 +1,7 @@
 import { produce } from "immer";
 import { useCallback, useEffect, useMemo, useReducer } from "preact/hooks";
 import { useModel } from "./useModel";
+import { pickRandomNames } from "./randomNames";
 import { sleep } from "./utils";
 import type { AvailabilityState } from "./useAvailability";
 
@@ -19,11 +20,12 @@ export type AiDisplayMessage = {
     id: string;
     kind: "ai";
     participant: AiParticipant;
+    name: string;
     text: string;
     turn: number;
 };
 
-export type SystemEvent = { type: "joining" } | { type: "joined"; participant: AiParticipant };
+export type SystemEvent = { type: "joining" } | { type: "joined"; participant: AiParticipant; name: string };
 
 export type SystemDisplayMessage = {
     id: string;
@@ -65,6 +67,7 @@ type Turn = {
 
 type State = {
     settings: ConversationSettings;
+    names: Record<AiParticipant, string>;
     status: Status | null;
     messages: DisplayMessage[];
     history: PromptMessage[];
@@ -90,7 +93,7 @@ const maxContextUsageRatio = 0.65;
 const expectedInputs: LanguageModelExpected[] = [{ type: "text", languages: ["ja", "en"] }];
 const expectedOutputs: LanguageModelExpected[] = [{ type: "text", languages: ["ja"] }];
 
-function createModelOptions(participant: AiParticipant, persona: string): LanguageModelCreateOptions {
+function createModelOptions(name: string, persona: string): LanguageModelCreateOptions {
     return {
         expectedInputs,
         expectedOutputs,
@@ -99,7 +102,7 @@ function createModelOptions(participant: AiParticipant, persona: string): Langua
                 role: "system",
                 content: [
                     "あなたは継続対話に参加する会話相手です。",
-                    `あなたの名前は ${participant} です。`,
+                    `あなたの名前は ${name} です。`,
                     `人格: ${persona}`,
                     "返答は日本語で、短めの自然なおしゃべりにしてください。",
                     "相手の直前の発言をやさしく拾い、感想や小さな質問を添えて会話を続けてください。",
@@ -116,8 +119,14 @@ function createModelOptions(participant: AiParticipant, persona: string): Langua
     };
 }
 
+function pickParticipantNames(): Record<AiParticipant, string> {
+    const [A, B] = pickRandomNames(2);
+    return { A, B };
+}
+
 const initialStatus: Status = { kind: "idle" };
 const initialState: State = {
+    names: { A: "", B: "" },
     settings: {
         topic: "ふたりが、最近ちょっと楽しかったことや気になることを、ゆるく話し続ける。",
         participantA: "穏やかで聞き上手。相手の話に乗りながら、日常の小さな発見を楽しむ。",
@@ -147,7 +156,7 @@ function createTurn(state: State, number: number): Turn {
     const participant: AiParticipant = number % 2 === 1 ? "A" : "B";
     const recentHistory = state.history.slice(-maxRecentMessages);
     const recentMessages = recentHistory
-        .map((message) => `${message.speaker === "human" ? "ユーザー" : message.speaker}: ${message.text}`)
+        .map((message) => `${message.speaker === "human" ? "ユーザー" : state.names[message.speaker]}: ${message.text}`)
         .join("\n");
     return {
         number,
@@ -155,7 +164,7 @@ function createTurn(state: State, number: number): Turn {
         precedingLength: recentHistory.at(-1)?.text.length ?? 0,
         prompt: [
             `テーマ: ${state.settings.topic}`,
-            `あなたは ${participant} です。`,
+            `あなたは ${state.names[participant]} です。`,
             `最大 ${state.settings.maxLength} 文字。`,
             "自然な雑談として、気軽で親しみやすい口調を保ってください。",
             "2〜4文で、相手の質問に答えることを優先してください。",
@@ -163,8 +172,8 @@ function createTurn(state: State, number: number): Turn {
             "直近の会話に未完了の話題がある場合は、その話題を続けてください。",
             ...(recentHistory.some((message) => message.speaker === "human")
                 ? [
-                      "参加者は A、B、人間のユーザーの 3 人です。",
-                      "発言の冒頭に「Bさん、」「ユーザーさん、」のように宛名を付け、誰に向けた言葉かをはっきりさせてください。「あなた」だけで呼ばないでください。",
+                      `参加者は ${state.names.A}、${state.names.B}、人間のユーザーの 3 人です。`,
+                      `発言の冒頭に「${state.names[participant === "A" ? "B" : "A"]}さん、」「ユーザーさん、」のように宛名を付け、誰に向けた言葉かをはっきりさせてください。「あなた」だけで呼ばないでください。`,
                       "直近の発言が他の参加者宛てなら、その人の代わりに答えず、感想や一言を添える程度にしてください。あなた宛て、または全員宛てなら、まず答えてください。",
                   ]
                 : []),
@@ -231,7 +240,11 @@ function reducer(state: State, action: Action): State {
                 ) {
                     break;
                 }
-                addSystemMessage({ type: "joined", participant: action.participant });
+                addSystemMessage({
+                    type: "joined",
+                    participant: action.participant,
+                    name: draft.names[action.participant],
+                });
                 break;
             case "generating":
                 draft.phase = "generating";
@@ -243,6 +256,7 @@ function reducer(state: State, action: Action): State {
                     id: `ai-${action.turn.number}`,
                     kind: "ai",
                     participant: action.turn.participant,
+                    name: draft.names[action.turn.participant],
                     turn: action.turn.number,
                     text: action.text,
                 });
@@ -259,8 +273,10 @@ function reducer(state: State, action: Action): State {
 }
 
 export function useConversation(): UseConversationResult {
-    const [state, dispatch] = useReducer(reducer, initialState, (state) => reducer(state, { type: "start" }));
-    const { turn, settings } = state;
+    const [state, dispatch] = useReducer(reducer, initialState, (state) =>
+        reducer({ ...state, names: pickParticipantNames() }, { type: "start" }),
+    );
+    const { turn, settings, names } = state;
 
     const onError = useCallback((error: unknown) => {
         dispatch({ type: "modelsFailed", error });
@@ -268,12 +284,18 @@ export function useConversation(): UseConversationResult {
     const onCreatedA = useCallback(() => dispatch({ type: "joined", participant: "A" }), []);
     const onCreatedB = useCallback(() => dispatch({ type: "joined", participant: "B" }), []);
     const { model: modelA, availability: availabilityA } = useModel({
-        modelOptions: useMemo(() => createModelOptions("A", settings.participantA), [settings.participantA]),
+        modelOptions: useMemo(
+            () => createModelOptions(names.A, settings.participantA),
+            [names.A, settings.participantA],
+        ),
         onCreated: onCreatedA,
         onError,
     });
     const { model: modelB, availability: availabilityB } = useModel({
-        modelOptions: useMemo(() => createModelOptions("B", settings.participantB), [settings.participantB]),
+        modelOptions: useMemo(
+            () => createModelOptions(names.B, settings.participantB),
+            [names.B, settings.participantB],
+        ),
         onCreated: onCreatedB,
         onError,
     });
@@ -338,7 +360,7 @@ export function useConversation(): UseConversationResult {
             ? { kind: "availability", value: blockingAvailability }
             : (state.status ?? initialStatus),
         messages: state.messages,
-        typingName: state.phase === "generating" && state.turn ? state.turn.participant : null,
+        typingName: state.phase === "generating" && state.turn ? state.names[state.turn.participant] : null,
         sendHumanMessage,
     };
 }

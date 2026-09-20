@@ -67,6 +67,7 @@ export function MessageComposer({ onSend }: MessageComposerProps) {
             }}
         >
             <textarea
+                autoFocus
                 className={textareaStyles}
                 rows={1}
                 placeholder="会話に参加する"

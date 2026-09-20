@@ -12,14 +12,15 @@ type UseModelResult = { model: Model | null; availability: AvailabilityState };
 
 type UseModelOptions = {
     modelOptions: Omit<LanguageModelCreateOptions, "signal">;
-    callbacks: {
-        onCreated: () => void;
-        onError: (error: unknown) => void;
-    };
+    onCreated: () => void;
+    onError: (error: unknown) => void;
 };
 
-export function useModel({ modelOptions, callbacks: { onCreated, onError } }: UseModelOptions): UseModelResult {
-    const availability = useAvailability(modelOptions);
+export function useModel({ modelOptions, onCreated, onError }: UseModelOptions): UseModelResult {
+    const { expectedInputs, expectedOutputs } = modelOptions;
+    const availability = useAvailability(
+        useMemo(() => ({ expectedInputs, expectedOutputs }), [expectedInputs, expectedOutputs]),
+    );
     const enabled =
         availability.kind === "available" ||
         availability.kind === "downloadable" ||

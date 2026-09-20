@@ -87,10 +87,13 @@ const maxRecentMessages = 8;
 const maxTurnsBeforeModelReset = 16;
 const maxContextUsageRatio = 0.65;
 
+const expectedInputs: LanguageModelExpected[] = [{ type: "text", languages: ["ja", "en"] }];
+const expectedOutputs: LanguageModelExpected[] = [{ type: "text", languages: ["ja"] }];
+
 function createModelOptions(participant: AiParticipant, persona: string): LanguageModelCreateOptions {
     return {
-        expectedInputs: [{ type: "text", languages: ["ja", "en"] }],
-        expectedOutputs: [{ type: "text", languages: ["ja"] }],
+        expectedInputs,
+        expectedOutputs,
         initialPrompts: [
             {
                 role: "system",
@@ -261,21 +264,17 @@ export function useConversation(): UseConversationResult {
     const onError = useCallback((error: unknown) => {
         dispatch({ type: "modelsFailed", error });
     }, []);
-    const callbacksA = useMemo(
-        () => ({ onCreated: () => dispatch({ type: "joined", participant: "A" }), onError }),
-        [onError],
-    );
-    const callbacksB = useMemo(
-        () => ({ onCreated: () => dispatch({ type: "joined", participant: "B" }), onError }),
-        [onError],
-    );
+    const onCreatedA = useCallback(() => dispatch({ type: "joined", participant: "A" }), []);
+    const onCreatedB = useCallback(() => dispatch({ type: "joined", participant: "B" }), []);
     const { model: modelA, availability: availabilityA } = useModel({
         modelOptions: useMemo(() => createModelOptions("A", settings.participantA), [settings.participantA]),
-        callbacks: callbacksA,
+        onCreated: onCreatedA,
+        onError,
     });
     const { model: modelB, availability: availabilityB } = useModel({
         modelOptions: useMemo(() => createModelOptions("B", settings.participantB), [settings.participantB]),
-        callbacks: callbacksB,
+        onCreated: onCreatedB,
+        onError,
     });
 
     const availabilities = [availabilityA, availabilityB];

@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
-import type { Dispatch } from "preact/hooks";
 
 export type AiParticipant = "A" | "B";
-
-export type ModelEvent = { type: "joined"; participant: AiParticipant } | { type: "modelsFailed"; error: unknown };
 
 export const modelOptions: LanguageModelCreateCoreOptions = {
     expectedInputs: [{ type: "text", languages: ["ja", "en"] }],
@@ -18,12 +15,22 @@ export type ModelHandle = {
 
 type ModelState = { instance: LanguageModel | null; epoch: number };
 
-export function useModel(
-    dispatch: Dispatch<ModelEvent>,
-    participant: AiParticipant,
-    persona: string,
-    enabled: boolean,
-): ModelHandle | null {
+type UseModelOptions = {
+    participant: AiParticipant;
+    persona: string;
+    enabled: boolean;
+    callbacks: {
+        onJoined: (participant: AiParticipant) => void;
+        onError: (error: unknown) => void;
+    };
+};
+
+export function useModel({
+    participant,
+    persona,
+    enabled,
+    callbacks: { onJoined, onError },
+}: UseModelOptions): ModelHandle | null {
     const [{ instance, epoch }, setModel] = useState<ModelState>({ instance: null, epoch: 0 });
 
     const setInstance = useCallback((instance: LanguageModel | null) => {
@@ -66,13 +73,13 @@ export function useModel(
             .then((created) => {
                 controller.signal.throwIfAborted();
                 if (epoch === 0) {
-                    dispatch({ type: "joined", participant });
+                    onJoined(participant);
                 }
                 setInstance(created);
             })
             .catch((error) => {
                 if (!controller.signal.aborted) {
-                    dispatch({ type: "modelsFailed", error });
+                    onError(error);
                 }
             });
         return () => {
@@ -83,7 +90,7 @@ export function useModel(
             );
             setInstance(null);
         };
-    }, [dispatch, participant, persona, enabled, epoch, setInstance]);
+    }, [onJoined, onError, participant, persona, enabled, epoch, setInstance]);
 
     return useMemo<ModelHandle | null>(
         () =>

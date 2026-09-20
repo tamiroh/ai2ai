@@ -1,10 +1,10 @@
 import { produce } from "immer";
-import { useCallback, useEffect, useReducer } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useReducer } from "preact/hooks";
 import { useAvailability } from "./useAvailability";
 import { modelOptions, useModel } from "./useModel";
 import { sleep } from "./utils";
 import type { AvailabilityState } from "./useAvailability";
-import type { AiParticipant, ModelEvent } from "./useModel";
+import type { AiParticipant } from "./useModel";
 
 export type Participant = AiParticipant | "human";
 
@@ -76,7 +76,8 @@ type State = {
 type Action =
     | { type: "start" }
     | { type: "human"; text: string }
-    | ModelEvent
+    | { type: "joined"; participant: AiParticipant }
+    | { type: "modelsFailed"; error: unknown }
     | { type: "generating"; turn: Turn }
     | { type: "completed"; turn: Turn; text: string }
     | { type: "next"; turn: Turn }
@@ -224,8 +225,29 @@ export function useConversation(): UseConversationResult {
     const isUnavailable =
         availability.kind === "unsupported" || availability.kind === "unavailable" || availability.kind === "error";
     const isModelEnabled = availability.kind !== "checking" && !isUnavailable;
-    const modelA = useModel(dispatch, "A", settings.participantA, isModelEnabled);
-    const modelB = useModel(dispatch, "B", settings.participantB, isModelEnabled);
+    const modelCallbacks = useMemo(
+        () => ({
+            onJoined: (participant: AiParticipant) => {
+                dispatch({ type: "joined", participant });
+            },
+            onError: (error: unknown) => {
+                dispatch({ type: "modelsFailed", error });
+            },
+        }),
+        [],
+    );
+    const modelA = useModel({
+        participant: "A",
+        persona: settings.participantA,
+        enabled: isModelEnabled,
+        callbacks: modelCallbacks,
+    });
+    const modelB = useModel({
+        participant: "B",
+        persona: settings.participantB,
+        enabled: isModelEnabled,
+        callbacks: modelCallbacks,
+    });
 
     const sendHumanMessage = useCallback((text: string) => {
         dispatch({ type: "human", text });

@@ -3,8 +3,7 @@ import type { Dispatch } from "preact/hooks";
 
 export type AiParticipant = "A" | "B";
 
-export type ModelEvent =
-    { type: "joining" } | { type: "joined"; participant: AiParticipant } | { type: "modelsFailed"; error: unknown };
+export type ModelEvent = { type: "joined"; participant: AiParticipant } | { type: "modelsFailed"; error: unknown };
 
 export const modelOptions: LanguageModelCreateCoreOptions = {
     expectedInputs: [{ type: "text", languages: ["ja", "en"] }],

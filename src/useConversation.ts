@@ -173,6 +173,7 @@ function reducer(state: State, action: Action): State {
 
         switch (action.type) {
             case "start":
+                addSystemMessage({ type: "joining" });
                 beginTurn();
                 break;
             case "human":
@@ -185,9 +186,6 @@ function reducer(state: State, action: Action): State {
                 break;
             case "modelsFailed":
                 finish({ kind: "error", error: action.error });
-                break;
-            case "joining":
-                addSystemMessage({ type: "joining" });
                 break;
             case "joined":
                 addSystemMessage({ type: "joined", participant: action.participant });
@@ -226,12 +224,6 @@ export function useConversation(): UseConversationResult {
     const isModelEnabled = availability.kind !== "checking" && !isUnavailable;
     const modelA = useModel(dispatch, "A", settings.participantA, isModelEnabled);
     const modelB = useModel(dispatch, "B", settings.participantB, isModelEnabled);
-
-    useEffect(() => {
-        if (isModelEnabled) {
-            dispatch({ type: "joining" });
-        }
-    }, [isModelEnabled]);
 
     const sendHumanMessage = useCallback((text: string) => {
         dispatch({ type: "human", text });
